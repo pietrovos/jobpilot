@@ -1,41 +1,33 @@
 # JobPilot
 
-JobPilot is a self-hosted job application tracker. It keeps applications,
-status history, notes, interviews, email logs, and private documents in one
-workspace without sending that data to a third-party tracking service.
+JobPilot is a self-hosted job application tracker built with Next.js, Prisma,
+and SQLite. It keeps applications, notes, interviews, email logs, and documents
+in one place. The data stays on the machine or server running the application.
 
-## Features
+The dashboard supports search, filters, custom sorting, archiving, and recovery
+of deleted applications. Each application has its own status history, notes,
+interview rounds, offer details, and attachments. Documents can also be stored
+once and linked to several applications.
 
-- Search, filter, sort, archive, and restore applications.
-- Record status changes, notes, interview rounds, offers, and email activity.
-- Store reusable documents and per-application attachments behind
-  authenticated routes.
-- Start in a temporary guest workspace and transfer its contents to an account.
-- Change passwords, revoke sessions, export account metadata, and delete an
-  account.
-- Import supported job pages through a restricted server-side fetcher, with
-  manual entry as the fallback.
+You can try the application as a guest before creating an account. Signing up
+moves the guest workspace into the new account in a database transaction, so a
+partial transfer cannot leave records split between owners.
 
-Keyboard-accessible application controls, unsaved-change warnings, responsive
-layouts, and desktop/mobile browser tests cover the main workflow.
+## Running it with Docker
 
-## Setup
-
-### Docker
-
-Docker Compose provides Node, SQLite, and persistent volumes for the database
-and uploads:
+Docker Compose sets up Node, SQLite, and persistent storage for the database and
+uploads:
 
 ```bash
 docker compose up --build
 ```
 
-Open http://localhost:3000 and create an account. To remove the local Docker
+Open http://localhost:3000 and create an account. To delete the local Docker
 data, run `docker compose down --volumes`.
 
-### Local
+## Running it locally
 
-Use Node 24.21.0 from `.nvmrc`:
+The project uses Node 24.21.0, recorded in `.nvmrc`.
 
 ```bash
 nvm use
@@ -46,52 +38,28 @@ npm run db:deploy
 npm run dev
 ```
 
-Set `DATABASE_URL` in `.env` to an absolute SQLite URL, for example
-`file:/home/you/projects/jobpilot/dev.db`. Uploads are written to `uploads/`.
-Both locations contain private data and are ignored by Git.
+Set `DATABASE_URL` in `.env` to an absolute SQLite URL, such as
+`file:/home/you/projects/jobpilot/dev.db`. Uploaded files go in `uploads/`.
+Git ignores both locations because they can contain private information.
 
-## Architecture
+## How it is put together
 
-JobPilot uses Next.js App Router, React, TypeScript, Prisma, SQLite, and local
-file storage. Server Actions handle mutations, Prisma queries are scoped to the
-current owner, and private files are streamed through authenticated route
-handlers. The design targets one Node process with persistent local disk.
+JobPilot uses the Next.js App Router and React for the interface. Server Actions
+handle changes to application data, and Prisma queries scope records to the
+current account. Private files are returned through authenticated route
+handlers instead of being placed in a public directory.
 
-Remote imports only allow configured HTTPS hosts. They revalidate redirects,
-reject private IPv4 targets, pin resolved connections, limit response sizes,
-and enforce a timeout. Uploaded images are decoded and re-encoded before
-storage; PDFs and text files are treated as downloads rather than trusted
-content.
+The job-page importer accepts configured HTTPS hosts only. It checks redirects,
+rejects private IPv4 targets, pins the resolved connection, and limits response
+size and duration. Uploaded images are decoded and written back in a known
+format. PDFs and text files are always served as downloads.
 
-See [deployment](docs/deployment.md) for the single-node production topology
-and [demo capture](docs/demo-capture.md) for creating portfolio material with
-fictional data.
+The application is designed for one Node process with persistent local storage.
+See [deployment](docs/deployment.md) for that setup. The
+[demo capture guide](docs/demo-capture.md) explains how to seed fictional data
+for screenshots or a recording.
 
-## Commands
-
-| Command | Purpose |
-| --- | --- |
-| `npm run lint` | Run ESLint |
-| `npm run typecheck` | Generate route types and check TypeScript |
-| `npm test` | Run backend and database tests with temporary SQLite databases |
-| `npm run build` | Generate Prisma Client and create a production build |
-| `npm run test:e2e` | Run Chromium desktop and mobile tests |
-| `npm run db:deploy` | Apply committed migrations |
-| `npm run db:seed:demo` | Seed an empty database with fictional demo data |
-| `npm run maintenance:cleanup` | Report expired records and orphaned files |
-
-GitHub Actions runs linting, type checks, backend tests, a production build,
-Playwright, and `npm audit`. Dependabot groups framework and Prisma updates.
-
-## Tests
-
-Backend tests use isolated temporary databases and cover schema constraints,
-ownership filters, guest transfer, soft deletion, upload validation, private
-file delivery, and URL-fetch policies. Playwright covers authentication,
-application management, notes, documents, attachments, account controls, and
-guest conversion on desktop and mobile Chromium.
-
-Run the local verification sequence with:
+## Tests and checks
 
 ```bash
 npm run lint
@@ -102,22 +70,37 @@ npm run test:e2e
 npm audit --audit-level=moderate
 ```
 
-## Security And Limits
+The backend tests create temporary SQLite databases. They cover migrations,
+ownership rules, guest transfer, soft deletion, uploads, private file delivery,
+and URL-fetch restrictions. Playwright runs the main workflows in desktop and
+mobile Chromium, including authentication, applications, notes, documents,
+attachments, account settings, and guest conversion.
 
-- Passwords are hashed, session tokens are stored as hashes, and production
-  cookies are secure and HTTP-only.
-- Uploads are limited by type and size. Private responses use no-store headers;
-  raster images may preview inline, while PDFs are not sanitized.
-- SQLite triggers enforce application and storage quotas. Rate limits cover
-  authentication, guest creation, imports, and uploads.
-- Guest workspaces expire after 24 hours. Deleted applications remain
-  recoverable for 30 days.
-- Email verification and password recovery are not configured.
-- SQLite and local uploads require a single-node deployment with coordinated
-  backups. Multi-replica and ephemeral serverless deployments are unsupported.
-- A production operator must provide HTTPS, monitoring, tested backup and
-  restore procedures, host-level resource limits, and an appropriate privacy
-  policy before accepting real user data.
+GitHub Actions runs the same lint, type-check, test, build, browser-test, and
+dependency-audit steps on each change.
 
-Current engineering priorities are tracked in
-[development notes](docs/polish-roadmap.md).
+Other useful commands:
+
+| Command | Purpose |
+| --- | --- |
+| `npm run db:deploy` | Apply committed migrations |
+| `npm run db:seed:demo` | Seed an empty database with fictional demo data |
+| `npm run maintenance:cleanup` | Report expired records and orphaned files |
+
+## Security limits
+
+Passwords are hashed, session tokens are stored as hashes, and production
+cookies are HTTP-only and secure. Authenticated database queries and file routes
+check record ownership. SQLite triggers also enforce ownership and storage
+quotas at the database layer.
+
+Uploads have type and size limits. Raster images can be previewed after they are
+decoded and rewritten; PDFs are not sanitized. Authentication, guest creation,
+imports, and uploads have rate limits. Guest workspaces expire after 24 hours,
+and deleted applications remain recoverable for 30 days.
+
+Email verification and password recovery are not implemented. A real deployment
+still needs HTTPS, monitoring, host-level resource limits, and tested backups.
+SQLite and local uploads also rule out ephemeral or multi-replica hosting.
+
+Planned work is listed in [development notes](docs/polish-roadmap.md).
