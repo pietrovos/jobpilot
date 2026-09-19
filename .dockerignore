@@ -1,0 +1,15 @@
+.env
+.next
+.git
+.github
+node_modules
+playwright-report
+test-results
+uploads
+dev.db
+dev.db-*
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+*.tsbuildinfo

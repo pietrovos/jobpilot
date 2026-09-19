@@ -1,0 +1,55 @@
+{
+  "name": "jobpilot",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": "24.x"
+  },
+  "scripts": {
+    "dev": "sh -c 'npx --yes --package=node@24.21.0 -- node node_modules/next/dist/bin/next dev & pid=$!; trap \"kill $pid; exit\" INT TERM; until curl --silent --output /dev/null http://localhost:3000; do sleep 0.2; done; chromium http://localhost:3000 >/dev/null 2>&1 & wait $pid'",
+    "build": "npm run prisma:generate && next build",
+    "start": "node scripts/start.mjs",
+    "lint": "eslint",
+    "typecheck": "next typegen && tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "test:e2e": "playwright test",
+    "prisma:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:seed:demo": "tsx scripts/seed-demo.ts",
+    "maintenance:cleanup": "tsx scripts/cleanup.ts",
+    "deploy:prepare": "node scripts/deploy-prepare.mjs",
+    "db:studio": "prisma studio"
+  },
+  "dependencies": {
+    "@prisma/adapter-better-sqlite3": "^7.9.1",
+    "@prisma/client": "^7.9.1",
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^13.0.3",
+    "next": "16.3.5",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "sharp": "^0.35.4",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^24",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "dotenv": "^17.2.3",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.5",
+    "prisma": "^7.9.1",
+    "tailwindcss": "^4",
+    "tsx": "4.23.13",
+    "typescript": "^5"
+  },
+  "overrides": {
+    "@prisma/config": {
+      "deepmerge-ts": "8.0.2"
+    },
+    "mysql2": "3.24.4"
+  }
+}

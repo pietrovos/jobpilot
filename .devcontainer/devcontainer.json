@@ -1,0 +1,14 @@
+{
+  "name": "JobPilot",
+  "dockerComposeFile": "../docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/app",
+  "shutdownAction": "stopCompose",
+  "overrideCommand": false,
+  "forwardPorts": [3000],
+  "portsAttributes": {
+    "3000": {
+      "label": "JobPilot"
+    }
+  }
+}

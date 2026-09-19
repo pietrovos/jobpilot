@@ -1,0 +1,25 @@
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: file:/data/jobpilot.sqlite
+      NEXT_TELEMETRY_DISABLED: "1"
+    volumes:
+      - .:/app
+      - jobpilot_next_cache:/app/.next
+      - jobpilot_node_modules:/app/node_modules
+      - jobpilot_prisma_client:/app/src/generated/prisma
+      - jobpilot_data:/data
+      - jobpilot_uploads:/app/uploads
+    command: >
+      sh -c "npm ci && npm run prisma:generate && npm run db:deploy &&
+      ./node_modules/.bin/next dev --hostname 0.0.0.0"
+
+volumes:
+  jobpilot_data:
+  jobpilot_node_modules:
+  jobpilot_next_cache:
+  jobpilot_prisma_client:
+  jobpilot_uploads:

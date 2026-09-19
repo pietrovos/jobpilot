@@ -1,0 +1,246 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id                  String               @id @default(cuid())
+  name                String
+  email               String               @unique
+  passwordHash        String
+  profileImagePath    String?
+  profileImageType    String?
+  isGuest             Boolean              @default(false)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  sessions            Session[]
+  applications        Application[]
+  deletedApplications DeletedApplication[]
+  applicationFiles    ApplicationFile[]
+  documents           UserDocument[]
+  emailLogs           ApplicationEmailLog[]
+  interviews          ApplicationInterview[]
+  offerDetails        ApplicationOfferDetails[]
+  notes               ApplicationNote[]
+  noteFolders         ApplicationNoteFolder[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Application {
+  id            String            @id @default(cuid())
+  userId        String
+  company       String
+  role          String
+  status        ApplicationStatus @default(APPLIED)
+  location      String?
+  salary        String?
+  jobUrl        String?
+  companyLogoPath String?
+  companyLogoType String?
+  jobPostedAt   String?
+  jobDescription String?
+  notes         String?
+  appliedAt     DateTime          @default(now())
+  archivedAt    DateTime?
+  deletedAt     DateTime?
+  sortOrder     Int               @default(0)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  statusChanges StatusChange[]
+  files         ApplicationFile[]
+  emailLogs     ApplicationEmailLog[]
+  interviews    ApplicationInterview[]
+  offerDetails  ApplicationOfferDetails?
+  noteEntries   ApplicationNote[]
+  noteFolders   ApplicationNoteFolder[]
+
+  @@index([userId, status])
+  @@index([userId, archivedAt])
+  @@index([userId, deletedAt])
+  @@index([userId, sortOrder])
+}
+
+model ApplicationNote {
+  id            String      @id @default(cuid())
+  applicationId String
+  userId        String
+  title         String
+  body          String
+  folderId      String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  folder        ApplicationNoteFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+
+  @@index([applicationId, createdAt])
+  @@index([userId, createdAt])
+  @@index([folderId])
+}
+
+model ApplicationNoteFolder {
+  id            String            @id @default(cuid())
+  applicationId String
+  userId        String
+  name          String
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  application   Application       @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notes         ApplicationNote[]
+
+  @@index([applicationId, name])
+  @@index([userId, createdAt])
+}
+
+model ApplicationEmailLog {
+  id            String      @id @default(cuid())
+  applicationId String
+  userId        String
+  subject       String
+  direction     String      @default("RECEIVED")
+  recipient     String?
+  emailUrl      String?
+  sentAt        DateTime
+  notes         String?
+  createdAt     DateTime    @default(now())
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId, sentAt])
+  @@index([userId, sentAt])
+}
+
+model ApplicationInterview {
+  id            String      @id @default(cuid())
+  applicationId String
+  userId        String
+  title         String
+  interviewType String?
+  scheduledAt   DateTime?
+  studyNotes    String?
+  notes         String?
+  createdAt     DateTime    @default(now())
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId, scheduledAt])
+  @@index([userId, scheduledAt])
+}
+
+model ApplicationOfferDetails {
+  id              String      @id @default(cuid())
+  applicationId   String      @unique
+  userId          String
+  compensation    String?
+  startDate       String?
+  deadline        String?
+  benefits        String?
+  equity          String?
+  negotiables     String?
+  notes           String?
+  updatedAt       DateTime    @updatedAt
+  createdAt       DateTime    @default(now())
+  application     Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, updatedAt])
+}
+
+model ApplicationFile {
+  id            String      @id @default(cuid())
+  userId        String
+  applicationId String
+  userDocumentId String?
+  fileName      String
+  fileType      String
+  fileSize      Int
+  storagePath   String
+  createdAt     DateTime    @default(now())
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  userDocument  UserDocument? @relation(fields: [userDocumentId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([applicationId, createdAt])
+  @@index([userDocumentId])
+}
+
+model UserDocument {
+  id               String            @id @default(cuid())
+  userId           String
+  fileName         String
+  fileType         String
+  fileSize         Int
+  storagePath      String
+  createdAt        DateTime          @default(now())
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  applicationFiles ApplicationFile[]
+
+  @@index([userId, createdAt])
+}
+
+model StatusChange {
+  id            String            @id @default(cuid())
+  applicationId String
+  status        ApplicationStatus
+  changedAt     DateTime          @default(now())
+  application   Application       @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId, changedAt])
+}
+
+model DeletedApplication {
+  id        String            @id @default(cuid())
+  userId    String
+  company   String
+  role      String
+  status    ApplicationStatus
+  location  String?
+  salary    String?
+  jobUrl    String?
+  companyLogoPath String?
+  companyLogoType String?
+  jobPostedAt String?
+  jobDescription String?
+  notes     String?
+  appliedAt DateTime
+  createdAt DateTime
+  deletedAt DateTime          @default(now())
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, deletedAt])
+}
+
+enum ApplicationStatus {
+  APPLIED
+  INTERVIEWING
+  OFFER
+  REJECTED
+}
+
+model RateLimit {
+  key       String @id
+  count     Int
+  expiresAt BigInt
+
+  @@index([expiresAt])
+}
