@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { continueAsGuest, signIn } from "../actions";
-import { AuthField, AuthShell, AuthSubmit, AuthSwitch, authMessage } from "../auth-ui";
+import { AuthField, AuthShell, AuthSubmit, AuthSwitch, ProviderButtons, authMessage } from "../auth-ui";
 import { getCurrentUser, isGuestUser } from "@/lib/auth";
 
 type LoginProps = {
@@ -21,8 +21,14 @@ export default async function LoginPage({ searchParams }: LoginProps) {
     <AuthShell
       title="Log in"
       subtitle="Enter your account details to open your dashboard."
-      message={authMessage(params.auth)}
+      message={authMessage(params.auth ?? params.oauth)}
     >
+      <ProviderButtons />
+      <div className="my-5 flex items-center gap-3 text-xs font-black uppercase tracking-[0.2em] text-slate-600">
+        <span className="h-px flex-1 bg-white/10" />
+        or
+        <span className="h-px flex-1 bg-white/10" />
+      </div>
       <form action={signIn} className="grid gap-4">
         <AuthField name="email" label="Email" type="email" placeholder="you@example.com" defaultValue={email} />
         <AuthField name="password" label="Password" type="password" autoComplete="current-password" placeholder="Your password" />

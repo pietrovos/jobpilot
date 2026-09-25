@@ -6,6 +6,8 @@ Run Node 24.21.0 on a Linux host with persistent local disk. Use exactly one app
 
 Set `DATABASE_URL=file:/srv/jobpilot-data/jobpilot.sqlite` in a service-manager environment file readable only by the service account. The parent must exist and be writable. SQLite's journal/WAL sidecars also need writable persistent space. Set `NODE_ENV=production` at runtime. Session tokens are hashed in SQLite; the app does not consume an `AUTH_SECRET` variable.
 
+Social sign-in is optional and off unless credentials are supplied. Set the provider pairs you intend to enable (`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`, `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET`, `LINKEDIN_CLIENT_ID`/`LINKEDIN_CLIENT_SECRET`). Treat the secrets like any other credential: keep them in the same protected environment file, never in the release tree. Register the exact redirect URI, `https://<host>/api/auth/oauth/<provider>/callback`, with each provider. The OAuth flow stores a short-lived, HTTP-only state cookie and uses PKCE; it does not add a separate signing secret. Rotating a provider secret requires restarting the process.
+
 The process working directory must be the application release root. Mount `/srv/jobpilot-data/uploads` at `<release>/uploads` or create a symlink there before startup. There is currently **no configurable uploads environment variable**. Keep all upload subdirectories (documents, application files, profile pictures, company logos) on that mount. Do not put uploads in `public/`, serve them directly with nginx, or bake them into releases. Access-controlled routes serve them. The service account also needs a writable `.next/cache`.
 
 ## Release Procedure

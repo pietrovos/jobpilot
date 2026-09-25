@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { AutofillApplicationForm } from "./autofill-application-form";
 import type { UserDocumentItem } from "./document-types";
@@ -10,17 +10,37 @@ export function AddApplicationDialog({ documents }: { documents: UserDocumentIte
   const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
 
+  useEffect(() => {
+    function openWithShortcut(event: KeyboardEvent) {
+      if (event.key !== "Enter" || !event.shiftKey || event.ctrlKey || event.altKey || event.metaKey || event.repeat) return;
+      if (event.target instanceof Element && event.target.closest("input, textarea, select, [contenteditable]")) return;
+      if (isOpen) { event.preventDefault(); event.stopPropagation(); return; }
+      if (document.querySelector("dialog[open]")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setIsOpen(true);
+    }
+
+    window.addEventListener("keydown", openWithShortcut, true);
+    return () => window.removeEventListener("keydown", openWithShortcut, true);
+  }, [isOpen]);
 
   return (
     <>
-      <button
-        type="button"
-        aria-label="Add application"
-        className="grid size-12 place-items-center rounded-full border border-sky-300/45 bg-sky-400/16 text-3xl font-black leading-none text-sky-50 shadow-[0_0_28px_rgb(14_165_233/0.26)] transition hover:scale-105 hover:border-sky-100/70 hover:bg-sky-400/24 hover:text-white"
-        onClick={() => setIsOpen(true)}
-      >
-        +
-      </button>
+      <span className="group relative inline-flex shrink-0">
+        <button
+          type="button"
+          aria-label="Add application"
+          aria-keyshortcuts="Shift+Enter"
+          className="grid size-12 place-items-center rounded-full border border-sky-300/45 bg-sky-400/16 text-3xl font-black leading-none text-sky-50 shadow-[0_0_28px_rgb(14_165_233/0.26)] transition hover:scale-105 hover:border-sky-100/70 hover:bg-sky-400/24 hover:text-white"
+          onClick={() => setIsOpen(true)}
+        >
+          +
+        </button>
+        <span aria-hidden="true" className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 -translate-x-1/2 whitespace-nowrap rounded border border-sky-300/30 bg-slate-950 px-3 py-1.5 text-xs font-bold text-sky-100 opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+          Shift + Enter
+        </span>
+      </span>
 
       {isOpen
         ? createPortal(

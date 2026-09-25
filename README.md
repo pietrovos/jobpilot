@@ -42,6 +42,23 @@ Set `DATABASE_URL` in `.env` to an absolute SQLite URL, such as
 `file:/home/you/projects/jobpilot/dev.db`. Uploaded files go in `uploads/`.
 Git ignores both locations because they can contain private information.
 
+## Social sign-in
+
+Login can use Google, GitHub, or LinkedIn alongside email and password. Create
+an OAuth app with each provider you want, register
+`https://<your-host>/api/auth/oauth/<provider>/callback` as the redirect URI,
+and set the matching `*_CLIENT_ID` and `*_CLIENT_SECRET` values from
+`.env.example`. A provider stays hidden until both of its values are present, so
+leaving them unset keeps password-only login.
+
+Accounts created through a provider have no password. They can set one later
+from Account settings, where providers can also be connected or disconnected. An
+account must keep at least one working sign-in method. A provider email is only
+trusted to create a new account, never to attach itself to an existing one;
+connecting a provider to an existing account happens from settings while signed
+in. LinkedIn does not report whether its email is verified, so LinkedIn can only
+create an account, not link to one.
+
 ## How it is put together
 
 JobPilot uses the Next.js App Router and React for the interface. Server Actions
@@ -99,8 +116,10 @@ decoded and rewritten; PDFs are not sanitized. Authentication, guest creation,
 imports, and uploads have rate limits. Guest workspaces expire after 24 hours,
 and deleted applications remain recoverable for 30 days.
 
-Email verification and password recovery are not implemented. A real deployment
-still needs HTTPS, monitoring, host-level resource limits, and tested backups.
-SQLite and local uploads also rule out ephemeral or multi-replica hosting.
+Email verification and password recovery are not implemented. Provider sign-in
+verifies control of the provider account, not of the local email address, and
+LinkedIn does not report email verification at all. A real deployment still
+needs HTTPS, monitoring, host-level resource limits, and tested backups. SQLite
+and local uploads also rule out ephemeral or multi-replica hosting.
 
 Planned work is listed in [development notes](docs/polish-roadmap.md).

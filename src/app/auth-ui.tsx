@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { enabledProviders, oauthErrorMessage, OAUTH_PROVIDER_INFO } from "@/lib/oauth";
+import { ProviderMark } from "./provider-marks";
 import { SubmitButton } from "./ui/submit-button";
 
 export function AuthShell({
@@ -92,5 +94,28 @@ export function authMessage(value: string | string[] | undefined) {
    if (code === "signup-invalid") return "Use a valid name, email, and password of at least 8 characters and at most 72 UTF-8 bytes.";
   if (code === "required") return "Log in before opening your dashboard.";
 
-  return undefined;
+  return oauthErrorMessage(code);
+}
+
+// Renders the enabled providers, or nothing when the deployment has no OAuth
+// credentials configured. Icon-only buttons carry an accessible name.
+export function ProviderButtons({ next }: { next?: string }) {
+  const providers = enabledProviders();
+  if (providers.length === 0) return null;
+
+  return (
+    <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${providers.length}, minmax(0, 1fr))` }}>
+      {providers.map((provider) => (
+        <a
+          key={provider}
+          href={`/api/auth/oauth/${provider}${next ? `?next=${encodeURIComponent(next)}` : ""}`}
+          aria-label={`Continue with ${OAUTH_PROVIDER_INFO[provider].label}`}
+          title={`Continue with ${OAUTH_PROVIDER_INFO[provider].label}`}
+          className="flex items-center justify-center border border-white/15 bg-slate-950/70 px-5 py-3 text-slate-100 transition hover:border-sky-300/45 hover:bg-sky-400/10"
+        >
+          <ProviderMark provider={provider} />
+        </a>
+      ))}
+    </div>
+  );
 }

@@ -24,7 +24,7 @@ test("signup creates a secure session and persists across reload", async ({ page
   await expect(page).toHaveURL("http://localhost:3100/");
 });
 
-test("application details open with the keyboard", async ({ page }) => {
+test("application details open with the keyboard", async ({ page, isMobile }) => {
   await page.goto("/login");
   await page.getByRole("button", { name: "Continue as guest" }).click();
   await page.getByRole("button", { name: "Add application", exact: true }).click();
@@ -38,10 +38,136 @@ test("application details open with the keyboard", async ({ page }) => {
   const details = application.getByRole("button", { name: "View details", exact: true });
   await details.focus();
   await details.press("Enter");
-  await expect(page.getByRole("dialog", { name: "Keyboard Controls Company application details" })).toBeVisible();
+  const dialog = page.getByRole("dialog", { name: "Keyboard Controls Company application details" });
+  await expect(dialog).toBeVisible();
+  const jobDescription = dialog.getByRole("button", { name: "Job description" });
+  await expect(jobDescription).toBeFocused();
+  await jobDescription.press("ArrowLeft");
+  const company = dialog.locator('[data-detail-field="company"]');
+  await expect(company).toBeFocused();
+  await expect(company.getByText("Press Enter to modify")).toBeVisible();
+  await page.keyboard.press("ArrowDown");
+  await expect(dialog.locator('[data-detail-field="role"]')).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  await expect(jobDescription).toBeFocused();
+  await jobDescription.press("ArrowLeft");
+  await page.keyboard.press("Enter");
+  const companyEditor = dialog.getByRole("textbox", { name: "Company", exact: true });
+  await expect(companyEditor).toBeFocused();
+  await companyEditor.fill("Unsaved company name");
   await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
+  await expect(company).toContainText("Keyboard Controls Company");
+  await expect(company).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  await expect(jobDescription).toBeFocused();
+  if (!isMobile) {
+    const files = dialog.getByRole("button", { name: "Files" });
+    await files.hover();
+    await expect(files).not.toHaveCSS("transform", "none");
+  }
+  await jobDescription.press("ArrowRight");
+  await expect(dialog.getByRole("button", { name: "Notes", exact: true })).toBeFocused();
+  if (!isMobile) {
+    await expect(dialog.getByRole("button", { name: "Files" })).toHaveCSS("transform", "none");
+  }
+  await page.keyboard.press("ArrowDown");
+  await expect(dialog.getByRole("button", { name: "History", exact: true })).toBeFocused();
+  await page.keyboard.press("Home");
+  await expect(jobDescription).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(dialog.getByRole("button", { name: "Back to details" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
+  await expect(jobDescription).toBeFocused();
+  await dialog.getByRole("button", { name: "Email log" }).click();
+  await page.keyboard.press("Backspace");
+  await expect(dialog.getByRole("button", { name: "Email log" })).toBeFocused();
+  await page.keyboard.press("ArrowLeft");
+  await expect(company).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  await expect(jobDescription).toBeFocused();
+  await dialog.getByRole("button", { name: "History", exact: true }).click();
+  await page.keyboard.press("Escape");
+  await expect(dialog.getByRole("button", { name: "History", exact: true })).toBeFocused();
+  await page.keyboard.press("Backspace");
   await expect(details).toBeFocused();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test("arrow keys focus the first application and move between applications", async ({ page, isMobile }) => {
+  await page.goto("/login");
+  await page.getByRole("button", { name: "Continue as guest" }).click();
+
+  for (const company of ["First Arrow Company", "Second Arrow Company"]) {
+    await page.getByRole("button", { name: "Add application", exact: true }).click();
+    const creation = page.getByRole("dialog", { name: "Add application", exact: true });
+    await creation.getByRole("button", { name: "Enter details manually" }).click();
+    await creation.getByRole("textbox", { name: "Company", exact: true }).fill(company);
+    await creation.getByRole("textbox", { name: "Role", exact: true }).fill("Engineer");
+    await creation.getByRole("button", { name: "Save application" }).click();
+  }
+
+  const cards = page.locator("article[data-application-id]");
+  await expect(cards).toHaveCount(2);
+  if (!isMobile) {
+    await cards.nth(1).hover();
+    await expect(cards.nth(1)).not.toHaveCSS("box-shadow", "none");
+  }
+  await page.evaluate(() => (document.activeElement as HTMLElement).blur());
+  await page.keyboard.press("ArrowDown");
+  await expect(cards.nth(0)).toBeFocused();
+  if (!isMobile) {
+    await expect(cards.nth(1)).toHaveCSS("box-shadow", "none");
+    const hoveredCard = await cards.nth(1).boundingBox();
+    if (!hoveredCard) throw new Error("Second application card is missing");
+    await page.mouse.move(hoveredCard.x + hoveredCard.width / 2 + 2, hoveredCard.y + hoveredCard.height / 2);
+    await expect(cards.nth(1)).not.toHaveCSS("box-shadow", "none");
+  }
+  await page.keyboard.press("Tab");
+  await expect(cards.nth(0).getByRole("button", { name: "Select", exact: true })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(cards.nth(0)).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(cards.nth(1)).toBeFocused();
+  await page.keyboard.press("ArrowUp");
+  await expect(cards.nth(0)).toBeFocused();
+  await page.keyboard.press("ArrowLeft");
+  await expect(cards.nth(0)).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  await expect(cards.nth(1)).toBeFocused();
+  const secondCompany = await cards.nth(1).locator("h3").innerText();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("dialog", { name: `${secondCompany} application details` })).toBeVisible();
+});
+
+test("add application shortcut is visible on hover and opens the dialog", async ({ page, isMobile }) => {
+  await page.goto("/login");
+  await page.getByRole("button", { name: "Continue as guest" }).click();
+
+  const addApplication = page.getByRole("button", { name: "Add application", exact: true });
+  await expect(addApplication).toHaveAttribute("aria-keyshortcuts", "Shift+Enter");
+  if (isMobile) await addApplication.focus();
+  else await addApplication.hover();
+  await expect(page.getByText("Shift + Enter")).toHaveCSS("opacity", "1");
+
+  await page.keyboard.press("Shift+Enter");
+  await expect(page.getByRole("dialog", { name: "Add application", exact: true })).toBeVisible();
+  await page.keyboard.press("Shift+Enter");
+  await expect(page.getByRole("dialog", { name: "Add application", exact: true })).toHaveCount(1);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "Add application", exact: true })).toHaveCount(0);
+
+  await addApplication.click();
+  const creation = page.getByRole("dialog", { name: "Add application", exact: true });
+  await creation.getByRole("button", { name: "Enter details manually" }).click();
+  await creation.getByRole("textbox", { name: "Company", exact: true }).fill("Shortcut Company");
+  await creation.getByRole("textbox", { name: "Role", exact: true }).fill("Engineer");
+  await creation.getByRole("button", { name: "Save application" }).click();
+  await page.locator("article[data-application-id]").focus();
+  await page.keyboard.press("Shift+Enter");
+  await expect(creation).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Shortcut Company application details" })).toHaveCount(0);
 });
 
 test("documents dialog receives focus and restores it when dismissed", async ({ page }) => {
@@ -156,6 +282,9 @@ test("guest can create manually, keep multiline notes, restore and convert to an
   await page.getByRole("button", { name: "Save note", exact: true }).click();
   await expect(body).not.toBeVisible();
   await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: "Notes", exact: true })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "Renamed Fictional Observatory application details" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Interviewing" })).toBeVisible();
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await page.getByRole("dialog", { name: "Confirm delete applications" }).getByRole("button", { name: "Delete application", exact: true }).click();
@@ -221,6 +350,9 @@ test("documents and application attachments are private to their owner", async (
   expect((await page.request.get(attachmentUrl!, { headers: { Range: "bytes=0-4" } })).status()).toBe(206);
 
   await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: "Files", exact: true })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "Attachment Test Co application details" })).toHaveCount(0);
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await page.getByRole("dialog", { name: "Confirm delete applications" }).getByRole("button", { name: "Delete application", exact: true }).click();
   expect((await page.request.get(applicationDetailsUrl)).status()).toBe(404);

@@ -13,6 +13,7 @@ import { prisma } from "@/lib/db";
 import { dateSchema, optionalDateSchema, passwordSchema, webUrlSchema } from "@/lib/backend-validation";
 import { safeFetch } from "@/lib/safe-fetch";
 import { transferGuestOwnership } from "@/lib/guest-transfer";
+import { adoptGuestWorkspace } from "@/lib/oauth-session";
 import { consumeRateLimit } from "@/lib/backend-limits";
 import { verifiedImage, verifyUpload } from "@/lib/verified-upload";
 import { withUploadBatch } from "@/lib/upload-batch";
@@ -75,6 +76,8 @@ const offerDetailsSchema = z.object({
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const MAX_UPLOAD_BATCH_BYTES = 30 * 1024 * 1024;
+// Compared against for unknown or passwordless accounts to keep timing uniform.
+const DUMMY_PASSWORD_HASH = "$2b$12$R9h/cIPz0gi.URNNX3kh2OPST9/PgBkqquzi.Ss7KIUgO2t0jWMUW";
 const MAX_PROFILE_IMAGE_BYTES = 3 * 1024 * 1024;
 const MIN_PROFILE_IMAGE_DIMENSION = 64;
 const uploadsRoot = path.join(process.cwd(), "uploads", "application-files");
@@ -168,16 +171,17 @@ export async function signIn(formData: FormData) {
 
   const user = await prisma.user.findUnique({ where: { email: parsed.data.email } });
 
-  const validPassword = await bcrypt.compare(parsed.data.password, user && !user.isGuest
-    ? user.passwordHash
-    : "$2b$12$R9h/cIPz0gi.URNNX3kh2OPST9/PgBkqquzi.Ss7KIUgO2t0jWMUW");
+  // OAuth-only accounts have no password hash: compare against a dummy hash so
+  // the response time does not reveal whether the account can use a password.
+  const usableHash = user && !user.isGuest && user.passwordHash ? user.passwordHash : DUMMY_PASSWORD_HASH;
+  const validPassword = await bcrypt.compare(parsed.data.password, usableHash);
 
-  if (!user || user.isGuest || !validPassword) {
+  if (!user || user.isGuest || !user.passwordHash || !validPassword) {
     redirect("/login?auth=invalid-credentials");
   }
 
   if (isGuestUser(guestUser) && guestUser.id !== user.id) {
-    await transferGuestData(guestUser.id, user.id);
+    await adoptGuestWorkspace(guestUser.id, user.id);
   }
 
   await createSession(user.id);
@@ -251,14 +255,6 @@ export async function uploadProfilePicture(formData: FormData) {
 function safeReturnPath(returnTo: string) {
   if (returnTo === "/documents") return returnTo;
   return "/";
-}
-
-async function transferGuestData(
-  guestUserId: string,
-  realUserId: string,
-) {
-  const unusedProfile = await prisma.$transaction((tx) => transferGuestOwnership(tx, guestUserId, realUserId));
-  if (unusedProfile) await removeStoredFile(unusedProfile, profileUploadsRoot);
 }
 
 export async function extractJobPost(
@@ -785,6 +781,48 @@ export async function uploadApplicationFile(applicationId: string, formData: For
 
   revalidatePath("/");
   return { success: true, message: "Files uploaded." };
+}
+
+export async function attachApplicationDocuments(applicationId: string, formData: FormData) {
+  const user = await requireUser();
+  const documentIds = [...new Set(selectedDocumentIds(formData))];
+  if (documentIds.length === 0 || documentIds.length > 100) {
+    return { success: false, message: "Choose between 1 and 100 documents." };
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    const application = await tx.application.findFirst({
+      where: { id: applicationId, userId: user.id, deletedAt: null },
+      select: { id: true },
+    });
+    if (!application) return { success: false, message: "Application not found." };
+
+    const documents = await tx.userDocument.findMany({ where: { id: { in: documentIds }, userId: user.id } });
+    if (documents.length !== documentIds.length) return { success: false, message: "A selected document is no longer available." };
+
+    const existing = await tx.applicationFile.findMany({
+      where: { applicationId, userId: user.id, userDocumentId: { in: documentIds } },
+      select: { userDocumentId: true },
+    });
+    if (existing.length > 0) return { success: false, message: "One or more documents are already attached." };
+
+    const fileCount = await tx.applicationFile.count({ where: { applicationId, userId: user.id } });
+    if (fileCount + documents.length > 100) return { success: false, message: "Choose at most 100 attachments per application." };
+
+    await tx.applicationFile.createMany({ data: documents.map((document) => ({
+      applicationId,
+      userId: user.id,
+      userDocumentId: document.id,
+      fileName: document.fileName,
+      fileType: document.fileType,
+      fileSize: document.fileSize,
+      storagePath: document.storagePath,
+    })) });
+    return { success: true, message: documents.length === 1 ? "Document attached." : "Documents attached." };
+  });
+
+  if (result.success) revalidatePath("/");
+  return result;
 }
 
 export async function deleteApplicationFile(fileId: string) {

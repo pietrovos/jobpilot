@@ -25,6 +25,7 @@ export type ApplicationDetail = ApplicationSummary & {
   }>;
   files: Array<{
     id: string;
+    userDocumentId: string | null;
     fileName: string;
     fileType: string;
     fileSize: number;

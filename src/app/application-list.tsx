@@ -7,6 +7,7 @@ import { ApplicationStatus } from "@/generated/prisma/enums";
 import { Dialog } from "./ui/dialog";
 import { ActionForm, mutationFeedback, UnsavedChangesProvider, uploadError, useDiscardChanges } from "./ui/action-form";
 import type { ApplicationDetail, ApplicationSummary } from "./application-types";
+import type { UserDocumentItem } from "./document-types";
 
 type DeleteTarget = {
   ids: string[];
@@ -19,6 +20,8 @@ type DetailSection = "jobDescription" | "notes" | "files" | "emailLog" | "interv
 
 type ApplicationListProps = {
   applications: ApplicationSummary[];
+  documents: UserDocumentItem[];
+  attachApplicationDocuments: (applicationId: string, formData: FormData) => unknown | Promise<unknown>;
   addApplicationNote: (applicationId: string, formData: FormData) => unknown | Promise<unknown>;
   addApplicationNoteFolder: (applicationId: string, formData: FormData) => unknown | Promise<unknown>;
   addEmailLog: (applicationId: string, formData: FormData) => unknown | Promise<unknown>;
@@ -89,6 +92,13 @@ const rowStatusStyles: Record<ApplicationStatus, string> = {
   INTERVIEWING: "border-purple-400/35 hover:border-fuchsia-300/80 hover:bg-[radial-gradient(circle_at_18%_50%,rgb(192_132_252/0.14),transparent_34%),linear-gradient(90deg,rgb(88_28_135/0.24),rgb(15_23_42/0.28))] hover:shadow-[0_0_36px_rgb(168_85_247/0.28),inset_0_0_18px_rgb(168_85_247/0.08)]",
   OFFER: "border-orange-400/60 hover:border-yellow-100 hover:bg-[radial-gradient(circle_at_18%_50%,rgb(251_146_60/0.34),transparent_32%),radial-gradient(circle_at_75%_45%,rgb(253_186_116/0.20),transparent_28%),linear-gradient(90deg,rgb(154_52_18/0.56),rgb(15_23_42/0.25))] hover:shadow-[0_0_72px_rgb(251_146_60/0.52),0_0_26px_rgb(253_186_116/0.32),inset_0_0_34px_rgb(245_158_11/0.18)]",
   REJECTED: "border-rose-400/25 hover:border-rose-400/70 hover:bg-rose-500/[0.07] hover:shadow-[0_0_28px_rgb(225_29_72/0.14)]",
+};
+
+const rowStatusBaseStyles: Record<ApplicationStatus, string> = {
+  APPLIED: "border-blue-400/25",
+  INTERVIEWING: "border-purple-400/35",
+  OFFER: "border-orange-400/60",
+  REJECTED: "border-rose-400/25",
 };
 
 const selectedRowStatusStyles: Record<ApplicationStatus, string> = {
@@ -227,6 +237,8 @@ const modalStatusStyles: Record<ApplicationStatus, { overlay: string; shell: str
 
 export function ApplicationList({
   applications,
+  documents,
+  attachApplicationDocuments,
   addApplicationNote,
   addApplicationNoteFolder,
   addEmailLog,
@@ -265,12 +277,55 @@ export function ApplicationList({
   const [rankAnimations, setRankAnimations] = useState<Record<string, RankAnimation>>({});
   const dragStartOrderIds = useRef<string[] | null>(null);
   const droppedRef = useRef(false);
+  const listRef = useRef<HTMLDivElement>(null);
+  const [keyboardNavigatingList, setKeyboardNavigatingList] = useState(false);
   const [, startTransition] = useTransition();
   const orderedApplications = sortMode === "custom" && optimisticOrderIds
     ? orderApplications(applications, optimisticOrderIds)
     : applications;
   const activeDetailsApplication = detailsApplication;
   const selectedCount = selectedIds.length;
+
+  useEffect(() => {
+    function focusFirstApplication(event: KeyboardEvent) {
+      if (!["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight"].includes(event.key)) return;
+      if (document.activeElement !== document.body && document.activeElement !== document.documentElement) return;
+      if (document.querySelector("dialog[open]")) return;
+      const first = listRef.current?.querySelector<HTMLElement>("[data-application-id]");
+      if (!first) return;
+      event.preventDefault();
+      setKeyboardNavigatingList(true);
+      first.focus();
+    }
+
+    window.addEventListener("keydown", focusFirstApplication);
+    return () => window.removeEventListener("keydown", focusFirstApplication);
+  }, []);
+
+  function handleArticleKeyDown(event: React.KeyboardEvent<HTMLElement>, application: ApplicationSummary) {
+    if (event.key === "Escape" && event.target !== event.currentTarget) {
+      if (!(event.target instanceof Node) || !event.currentTarget.contains(event.target)) return;
+      if (event.target instanceof Element && event.target.closest("input, textarea, select, [contenteditable], [role='listbox']")) return;
+      if (event.currentTarget.querySelector('[aria-haspopup="listbox"][aria-expanded="true"]')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.currentTarget.focus();
+      return;
+    }
+    if (event.target !== event.currentTarget) return;
+    const index = orderedApplications.findIndex((item) => item.id === application.id);
+    if (index < 0) return;
+    if (["ArrowDown", "ArrowUp", "ArrowRight", "ArrowLeft"].includes(event.key)) {
+      event.preventDefault();
+      setKeyboardNavigatingList(true);
+      const next = index + (["ArrowDown", "ArrowRight"].includes(event.key) ? 1 : -1);
+      if (next < 0 || next >= orderedApplications.length) return;
+      listRef.current?.querySelector<HTMLElement>(`[data-application-id="${orderedApplications[next].id}"]`)?.focus();
+    } else if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      void openDetails(application);
+    }
+  }
 
   function toggleSelection(applicationId: string) {
     setSelectedIds((current) =>
@@ -396,7 +451,9 @@ export function ApplicationList({
   }
 
   return (
-    <div className="mt-6 grid gap-5">
+    <div ref={listRef} className="mt-6 grid gap-5" onPointerMove={(event) => {
+      if (event.pointerType === "mouse") setKeyboardNavigatingList(false);
+    }}>
       {operationMessage ? <p role="status" className="text-sm text-sky-200">{operationMessage}</p> : null}
       {isFiltered && sortMode === "custom" ? <p className="text-sm text-slate-400">Reordering is available for unfiltered lists of up to 30 applications.</p> : null}
       {sortNotice ? (
@@ -439,11 +496,14 @@ export function ApplicationList({
         return (
           <article
             key={application.id}
+            data-application-id={application.id}
+            tabIndex={-1}
+            aria-label={`${application.company} application`}
             draggable={canDrag}
-            className={`relative border-l-2 py-6 pl-5 pr-2 transition-all duration-200 ease-out ${
+            className={`application-card relative border-l-2 py-6 pl-5 pr-2 transition-all duration-200 ease-out ${
               isSelected
                 ? selectedRowStatusStyles[application.status]
-                : `bg-slate-950/30 ${rowStatusStyles[application.status]}`
+                : `bg-slate-950/30 ${keyboardNavigatingList ? rowStatusBaseStyles[application.status] : rowStatusStyles[application.status]}`
             } ${isFileDropTarget ? "border-cyan-300 bg-cyan-400/10 shadow-[0_0_34px_rgb(34_211_238/0.22)]" : ""} ${rankAnimation ? rankHoldStatusStyles[rankAnimation.status] : ""} ${rankAnimation?.direction === "up" ? "rank-transition-up" : ""} ${rankAnimation?.direction === "down" ? "rank-transition-down" : ""} ${rankAnimation ? `rank-transition-${rankAnimation.status.toLowerCase()}` : ""} ${draggedId === application.id ? "opacity-45" : canDrag ? "cursor-grab active:cursor-grabbing" : "cursor-default"}`}
             onDragStart={(event) => {
               if (!canDrag) {
@@ -525,6 +585,7 @@ export function ApplicationList({
               event.preventDefault();
               toggleSelection(application.id);
             }}
+            onKeyDown={(event) => handleArticleKeyDown(event, application)}
             onDoubleClick={(event) => {
               if (event.target instanceof Element && event.target.closest("a, button, form, input, select")) return;
 
@@ -624,6 +685,8 @@ export function ApplicationList({
         ? createPortal(
             <ApplicationDetails
               application={activeDetailsApplication}
+              documents={documents}
+              attachApplicationDocuments={attachApplicationDocuments}
               addApplicationNote={addApplicationNote}
               addApplicationNoteFolder={addApplicationNoteFolder}
               deleteApplicationFile={deleteApplicationFile}
@@ -716,6 +779,8 @@ function withoutBorderClasses(className: string) {
 
 function ApplicationDetails({
   application,
+  documents,
+  attachApplicationDocuments,
   addApplicationNote,
   addApplicationNoteFolder,
   addEmailLog,
@@ -736,6 +801,8 @@ function ApplicationDetails({
   onClose,
 }: {
   application: ApplicationDetail;
+  documents: UserDocumentItem[];
+  attachApplicationDocuments: (applicationId: string, formData: FormData) => unknown | Promise<unknown>;
   addApplicationNote: (applicationId: string, formData: FormData) => unknown | Promise<unknown>;
   addApplicationNoteFolder: (applicationId: string, formData: FormData) => unknown | Promise<unknown>;
   addEmailLog: (applicationId: string, formData: FormData) => unknown | Promise<unknown>;
@@ -757,6 +824,12 @@ function ApplicationDetails({
 }) {
   const [editingField, setEditingField] = useState<string | null>(null);
   const [activeDetailSection, setActiveDetailSection] = useState<DetailSection | null>(null);
+  const [keyboardNavigatingSections, setKeyboardNavigatingSections] = useState(false);
+  const detailFieldsRef = useRef<HTMLDivElement>(null);
+  const returnFocusFieldRef = useRef<string | null>(null);
+  const sectionGridRef = useRef<HTMLDivElement>(null);
+  const backToDetailsRef = useRef<HTMLButtonElement>(null);
+  const returnFocusSectionRef = useRef<DetailSection | null>(null);
   const hasUnsavedChangesRef = useRef(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [discardAction, setDiscardAction] = useState<(() => void) | null>(null);
@@ -772,6 +845,21 @@ function ApplicationDetails({
   ];
   const activeSectionLabel = detailSectionButtons.find((section) => section.id === activeDetailSection)?.label;
 
+  useEffect(() => {
+    if (activeDetailSection) {
+      backToDetailsRef.current?.focus();
+    } else if (returnFocusSectionRef.current) {
+      sectionGridRef.current?.querySelector<HTMLButtonElement>(`[data-detail-section="${returnFocusSectionRef.current}"]`)?.focus();
+      returnFocusSectionRef.current = null;
+    }
+  }, [activeDetailSection]);
+
+  useEffect(() => {
+    if (editingField || activeDetailSection || !returnFocusFieldRef.current) return;
+    detailFieldsRef.current?.querySelector<HTMLElement>(`[data-detail-field="${returnFocusFieldRef.current}"]`)?.focus();
+    returnFocusFieldRef.current = null;
+  }, [editingField, activeDetailSection]);
+
   function requestDiscard(action: () => void) {
     if (hasUnsavedChangesRef.current) {
       setDiscardAction(() => action);
@@ -781,11 +869,37 @@ function ApplicationDetails({
     }
   }
 
+  function backToDetails() {
+    requestDiscard(() => {
+      returnFocusSectionRef.current = activeDetailSection;
+      setActiveDetailSection(null);
+      setEditingField(null);
+    });
+  }
+
+  function finishEditingField(name: string) {
+    if (!activeDetailSection) returnFocusFieldRef.current = name;
+    setEditingField(null);
+    if (activeDetailSection) backToDetailsRef.current?.focus();
+  }
+
+  function handleEscape() {
+    if (editingField) finishEditingField(editingField);
+    else if (activeDetailSection) backToDetails();
+    else requestDiscard(onClose);
+  }
+
+  function handleBackspace() {
+    if (editingField) requestDiscard(() => finishEditingField(editingField));
+    else if (activeDetailSection) backToDetails();
+    else requestDiscard(onClose);
+  }
+
   return (
     <UnsavedChangesProvider onChange={(isDirty) => {
       hasUnsavedChangesRef.current = isDirty;
     }} onDiscardRequest={requestDiscard} onMutationSuccess={onDetailsChanged}>
-    <Dialog label={`${application.company} application details`} onClose={() => requestDiscard(onClose)} className={`details-overlay fixed inset-0 z-50 p-3 backdrop-blur-sm sm:p-5 ${modalTheme.overlay}`}>
+    <Dialog label={`${application.company} application details`} onClose={() => activeDetailSection ? backToDetails() : requestDiscard(onClose)} onEscape={handleEscape} onBack={handleBackspace} initialFocusSelector="[data-detail-section='jobDescription']" className={`details-overlay fixed inset-0 z-50 p-3 backdrop-blur-sm sm:p-5 ${modalTheme.overlay}`}>
       <div data-details-scroll className={`${modalTheme.scrollbar} h-full w-full overscroll-contain overflow-y-auto rounded-[0.75rem] p-5 sm:p-7 ${withoutBorderClasses(modalTheme.shell)}`}>
         {!activeDetailSection ? (
           <div className="flex flex-col gap-3 border-b border-white/10 pb-4 sm:flex-row sm:items-start sm:justify-between">
@@ -827,14 +941,10 @@ function ApplicationDetails({
                 <h3 className="mt-1 text-2xl font-black text-slate-100">{activeSectionLabel}</h3>
               </div>
               <button
+                ref={backToDetailsRef}
                 type="button"
                 className="rounded-full border border-white/10 px-5 py-3 text-sm font-bold text-slate-200 hover:bg-white/10"
-                onClick={() => {
-                  requestDiscard(() => {
-                    setActiveDetailSection(null);
-                    setEditingField(null);
-                  });
-                }}
+                onClick={backToDetails}
               >
                 Back to details
               </button>
@@ -861,6 +971,8 @@ function ApplicationDetails({
             {activeDetailSection === "files" ? (
               <ApplicationFiles
                 application={application}
+                documents={documents}
+                attachApplicationDocuments={attachApplicationDocuments}
                 deleteApplicationFile={deleteApplicationFile}
                 theme={modalTheme}
                 uploadApplicationFile={uploadApplicationFile}
@@ -880,9 +992,23 @@ function ApplicationDetails({
         ) : (
           <>
           <div className="mt-5 grid items-stretch gap-x-8 gap-y-1 sm:grid-cols-2">
-            <div className="min-w-0">
+            <div ref={detailFieldsRef} className="min-w-0" onKeyDown={(event) => {
+              if (!(event.target instanceof HTMLElement) || !event.target.matches("[data-detail-field]")) return;
+              const fields = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("[data-detail-field]"));
+              const index = fields.indexOf(event.target);
+              if (event.key === "ArrowRight") {
+                event.preventDefault();
+                setKeyboardNavigatingSections(true);
+                sectionGridRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+              } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                const next = index + (event.key === "ArrowDown" ? 1 : -1);
+                if (next < 0 || next >= fields.length) return;
+                event.preventDefault();
+                fields[next].focus();
+              }
+            }}>
               {(["company", "role", "jobUrl", "notes"] as const).map((name) => (
-                <InlineEditableDetail key={name} application={application} editing={editingField === name} theme={modalTheme} label={{ company: "Company", role: "Role", jobUrl: "Job posting link", notes: "Application notes" }[name]} name={name} type={name === "jobUrl" ? "url" : "text"} multiline={name === "notes"} value={application[name] || "Not added"} defaultValue={application[name] ?? ""} updateApplication={updateApplication} onEdit={() => requestDiscard(() => setEditingField(name))} onDone={() => setEditingField(null)} />
+                <InlineEditableDetail key={name} application={application} editing={editingField === name} theme={modalTheme} label={{ company: "Company", role: "Role", jobUrl: "Job posting link", notes: "Application notes" }[name]} name={name} type={name === "jobUrl" ? "url" : "text"} multiline={name === "notes"} value={application[name] || "Not added"} defaultValue={application[name] ?? ""} updateApplication={updateApplication} onEdit={() => requestDiscard(() => setEditingField(name))} onDone={() => finishEditingField(name)} />
               ))}
               <InlineEditableDetail
                 application={application}
@@ -895,18 +1021,38 @@ function ApplicationDetails({
                 defaultValue={toDatetimeLocal(application.appliedAt)}
                 updateApplication={updateApplication}
                 onEdit={() => requestDiscard(() => setEditingField("appliedAt"))}
-                onDone={() => setEditingField(null)}
+                onDone={() => finishEditingField("appliedAt")}
               />
-              <Detail label="Last updated" value={formatDateTime(application.updatedAt)} theme={modalTheme} />
-              <InlineEditableDetail application={application} editing={editingField === "salary"} theme={modalTheme} label="Salary" name="salary" value={application.salary || "N/A"} defaultValue={application.salary ?? ""} valueClassName={salaryRankStyles[application.status]} updateApplication={updateApplication} onEdit={() => requestDiscard(() => setEditingField("salary"))} onDone={() => setEditingField(null)} />
-              <InlineEditableDetail application={application} editing={editingField === "location"} theme={modalTheme} label="Location" name="location" value={application.location || "Missing"} defaultValue={application.location ?? ""} updateApplication={updateApplication} onEdit={() => requestDiscard(() => setEditingField("location"))} onDone={() => setEditingField(null)} />
-              <InlineEditableDetail application={application} editing={editingField === "jobPostedAt"} theme={modalTheme} label="Posting date" name="jobPostedAt" value={application.jobPostedAt || "Unknown"} defaultValue={application.jobPostedAt ?? ""} updateApplication={updateApplication} onEdit={() => requestDiscard(() => setEditingField("jobPostedAt"))} onDone={() => setEditingField(null)} />
+              <Detail label="Last updated" value={formatDateTime(application.updatedAt)} navigationId="updatedAt" theme={modalTheme} />
+              <InlineEditableDetail application={application} editing={editingField === "salary"} theme={modalTheme} label="Salary" name="salary" value={application.salary || "N/A"} defaultValue={application.salary ?? ""} valueClassName={salaryRankStyles[application.status]} updateApplication={updateApplication} onEdit={() => requestDiscard(() => setEditingField("salary"))} onDone={() => finishEditingField("salary")} />
+              <InlineEditableDetail application={application} editing={editingField === "location"} theme={modalTheme} label="Location" name="location" value={application.location || "Missing"} defaultValue={application.location ?? ""} updateApplication={updateApplication} onEdit={() => requestDiscard(() => setEditingField("location"))} onDone={() => finishEditingField("location")} />
+              <InlineEditableDetail application={application} editing={editingField === "jobPostedAt"} theme={modalTheme} label="Posting date" name="jobPostedAt" value={application.jobPostedAt || "Unknown"} defaultValue={application.jobPostedAt ?? ""} updateApplication={updateApplication} onEdit={() => requestDiscard(() => setEditingField("jobPostedAt"))} onDone={() => finishEditingField("jobPostedAt")} />
             </div>
             <div className="min-w-0 border-t border-white/10 pt-4 sm:border-t-0 sm:pt-0">
-              <div className="grid grid-cols-3 gap-2">
+              <div ref={sectionGridRef} className={`detail-section-grid grid grid-cols-3 gap-2 ${keyboardNavigatingSections ? "keyboard-navigating" : ""}`} onPointerMove={(event) => {
+                if (event.pointerType === "mouse") setKeyboardNavigatingSections(false);
+              }} onKeyDown={(event) => {
+                const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("button"));
+                const index = buttons.indexOf(event.target as HTMLButtonElement);
+                if (index < 0) return;
+                if (event.key === "ArrowLeft" && index % 3 === 0) {
+                  event.preventDefault();
+                  setKeyboardNavigatingSections(true);
+                  detailFieldsRef.current?.querySelector<HTMLElement>('[data-detail-field="company"]')?.focus();
+                  return;
+                }
+                const offsets: Record<string, number> = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 3, ArrowUp: -3 };
+                const offset = offsets[event.key];
+                const next = event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1 : offset === undefined ? -1 : index + offset;
+                if (next < 0 || next >= buttons.length) return;
+                event.preventDefault();
+                setKeyboardNavigatingSections(true);
+                buttons[next].focus();
+              }}>
                 {detailSectionButtons.map((section) => (
                   <button
                     key={section.id}
+                    data-detail-section={section.id}
                     type="button"
                     className={`game-menu-button aspect-square min-h-0 px-3 py-2 text-center text-slate-200 ${gameMenuStatusStyles[application.status]}`}
                     onClick={() => {
@@ -1170,22 +1316,29 @@ function DirectoryIcon({ name }: { name: "back" | "calendar-plus" | "check" | "c
 
 function ApplicationFiles({
   application,
+  documents,
+  attachApplicationDocuments,
   deleteApplicationFile,
   theme,
   uploadApplicationFile,
 }: {
   application: ApplicationDetail;
+  documents: UserDocumentItem[];
+  attachApplicationDocuments: (applicationId: string, formData: FormData) => unknown | Promise<unknown>;
   deleteApplicationFile: (fileId: string) => unknown | Promise<unknown>;
   theme: { timeline: string; eyebrow: string; button: string; fieldFocus: string; fieldInput: string };
   uploadApplicationFile: (applicationId: string, formData: FormData) => unknown | Promise<unknown>;
 }) {
   const [previewFile, setPreviewFile] = useState<ApplicationDetail["files"][number] | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<Array<{ name: string; size: number }>>([]);
+  const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
   const [isFileHovering, setIsFileHovering] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileStoreRef = useRef<File[]>([]);
   const totalSelectedFileSize = selectedFiles.reduce((total, file) => total + file.size, 0);
   const selectedFilesTooLarge = totalSelectedFileSize > 30 * 1024 * 1024;
+  const attachedDocumentIds = new Set(application.files.map((file) => file.userDocumentId));
+  const availableDocuments = documents.filter((document) => !attachedDocumentIds.has(document.id));
 
   function syncSelectedFiles(files: File[]) {
     setSelectedFiles(files.map((file) => ({ name: file.name, size: file.size })));
@@ -1221,7 +1374,7 @@ function ApplicationFiles({
       <div className="p-4">
         <div className="min-w-0">
           <h3 className={`font-mono text-xs font-bold uppercase tracking-[0.2em] ${theme.eyebrow}`}>Files</h3>
-          <p className="mt-2 text-sm font-semibold text-slate-300">Upload resumes, cover letters, or application docs.</p>
+          <p className="mt-2 text-sm font-semibold text-slate-300">Upload files or attach documents from your library.</p>
         </div>
 
         <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(17rem,0.85fr)_minmax(0,1.15fr)] lg:items-start">
@@ -1314,8 +1467,28 @@ function ApplicationFiles({
             {uploadError(selectedFiles) ? <p role="alert" className="text-sm text-rose-200">{uploadError(selectedFiles)}</p> : null}
           </ActionForm>
 
-          <div className="min-w-0 border-t border-white/10 pt-4 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
-            <h4 className={`font-mono text-xs font-bold uppercase tracking-[0.2em] ${theme.eyebrow}`}>Uploaded files</h4>
+          <ActionForm action={attachApplicationDocuments.bind(null, application.id)} onSuccess={() => setSelectedDocumentIds([])} className="min-w-0 border-t border-white/10 pt-4 lg:col-start-1">
+            <h4 className={`font-mono text-xs font-bold uppercase tracking-[0.2em] ${theme.eyebrow}`}>From Documents</h4>
+            {availableDocuments.length === 0 ? (
+              <p className="mt-3 text-sm text-slate-400">{documents.length === 0 ? "No saved documents yet. Add some in Documents first." : "All saved documents are already attached."}</p>
+            ) : (
+              <>
+                <div className="status-graph-scroll mt-3 grid max-h-44 gap-1 overflow-y-auto border border-white/10 bg-slate-950/35 p-2">
+                  {availableDocuments.map((document) => (
+                    <label key={document.id} className="flex cursor-pointer items-center gap-3 px-2 py-2 text-sm hover:bg-white/5">
+                      <input type="checkbox" name="documentIds" value={document.id} checked={selectedDocumentIds.includes(document.id)} onChange={(event) => setSelectedDocumentIds((current) => event.target.checked ? [...current, document.id] : current.filter((id) => id !== document.id))} className="size-4 shrink-0 accent-cyan-400" />
+                      <span className="min-w-0 flex-1 truncate text-slate-200">{document.fileName}</span>
+                      <span className="shrink-0 text-xs text-slate-500">{formatFileSize(document.fileSize)}</span>
+                    </label>
+                  ))}
+                </div>
+                <button disabled={selectedDocumentIds.length === 0} className={`mt-3 px-5 py-3 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-50 ${theme.button}`}>Attach selected</button>
+              </>
+            )}
+          </ActionForm>
+
+          <div className="min-w-0 border-t border-white/10 pt-4 lg:col-start-2 lg:row-span-2 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
+            <h4 className={`font-mono text-xs font-bold uppercase tracking-[0.2em] ${theme.eyebrow}`}>Attached files</h4>
             {application.files.length === 0 ? (
               <p className="mt-4 border-t border-white/10 px-1 py-4 text-sm font-semibold text-slate-500">No files uploaded yet.</p>
             ) : (
@@ -1384,7 +1557,7 @@ function EmailLogSection({
     <section className={`detail-module mt-3 border ${theme.timeline}`}>
       <div className="detail-module-rail" />
       <div className="relative p-4">
-        <div className="flex justify-end border-b border-white/10 pb-3">
+        <div className="flex justify-start border-b border-white/10 pb-3">
           <button type="button" className={`grid size-9 place-items-center rounded-lg ${theme.button}`} aria-label="New email log" title="New email log" onClick={() => requestDiscard(() => { setIsAddingEmail((current) => !current); setNewEmailDirection("RECEIVED"); })}>
             <DirectoryIcon name="mail-plus" />
           </button>
@@ -1471,7 +1644,7 @@ function InterviewSection({
     <section className={`detail-module mt-3 border ${theme.timeline}`}>
       <div className="detail-module-rail" />
       <div className="p-4">
-        <div className="flex justify-end border-b border-white/10 pb-3">
+        <div className="flex justify-start border-b border-white/10 pb-3">
           <button
             type="button"
             aria-label="Add interview"
@@ -1656,6 +1829,7 @@ function StatusHistorySection({
 function Detail({
   label,
   value,
+  navigationId,
   href,
   theme,
   wide = false,
@@ -1668,6 +1842,7 @@ function Detail({
 }: {
   label: string;
   value: string;
+  navigationId?: string;
   href?: string | null;
   theme?: { link: string; eyebrow: string; tile?: string; editIcon?: string; fieldGlow?: string };
   wide?: boolean;
@@ -1680,7 +1855,17 @@ function Detail({
 }) {
   return (
     <div
-      className={`group/detail relative border-b border-white/10 py-4 pr-12 text-left transition ${theme?.fieldGlow ?? "hover:border-white/20"} ${editable ? "" : "cursor-default"} ${wide ? "sm:col-span-2" : ""}`}
+      data-detail-field={navigationId}
+      tabIndex={navigationId ? 0 : undefined}
+      role={navigationId ? "group" : undefined}
+      aria-label={navigationId ? label : undefined}
+      aria-keyshortcuts={navigationId && editable ? "Enter" : undefined}
+      className={`detail-field group/detail relative border-b border-white/10 py-4 pr-12 text-left transition ${theme?.fieldGlow ?? "hover:border-white/20"} ${editable ? "" : "cursor-default"} ${wide ? "sm:col-span-2" : ""}`}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter" || event.target !== event.currentTarget || !editable || !onEdit) return;
+        event.preventDefault();
+        onEdit();
+      }}
       onDoubleClick={(event) => {
         if (!editable || !onEdit) return;
         if (event.target instanceof Element && event.target.closest("a, button")) return;
@@ -1703,6 +1888,7 @@ function Detail({
           ✎
         </button>
       ) : null}
+      {navigationId && editable ? <span className="detail-field-hint mt-2 text-xs font-semibold text-slate-400">Press Enter to modify</span> : null}
     </div>
   );
 }
@@ -1891,7 +2077,7 @@ function InlineEditableDetail({
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   if (!editing) {
-    return <Detail label={label} value={value} href={href} theme={theme} wide={wide} editable showEditButton={!["company", "role", "jobUrl", "notes", "jobPostedAt"].includes(name)} onEdit={onEdit} linkClassName={linkClassName} valueClassName={valueClassName} hideLabel={hideLabel} />;
+    return <Detail label={label} value={value} navigationId={hideLabel ? undefined : name} href={href} theme={theme} wide={wide} editable showEditButton={!["company", "role", "jobUrl", "notes", "jobPostedAt"].includes(name)} onEdit={onEdit} linkClassName={linkClassName} valueClassName={valueClassName} hideLabel={hideLabel} />;
   }
 
   return (

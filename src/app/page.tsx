@@ -4,6 +4,7 @@ import {
   addApplicationNoteFolder,
   addEmailLog,
   addInterview,
+  attachApplicationDocuments,
   deleteApplicationNote,
   deleteApplicationNoteFolder,
   deleteApplications,
@@ -213,6 +214,8 @@ export default async function Home({ searchParams }: HomeProps) {
 
             <ApplicationList
               applications={applicationItems}
+              documents={documentItems}
+              attachApplicationDocuments={attachApplicationDocuments}
               addApplicationNote={addApplicationNote}
               addApplicationNoteFolder={addApplicationNoteFolder}
               addEmailLog={addEmailLog}

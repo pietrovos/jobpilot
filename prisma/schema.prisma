@@ -16,13 +16,14 @@ model User {
   id                  String               @id @default(cuid())
   name                String
   email               String               @unique
-  passwordHash        String
+  passwordHash        String?
   profileImagePath    String?
   profileImageType    String?
   isGuest             Boolean              @default(false)
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
   sessions            Session[]
+  oauthAccounts       OAuthAccount[]
   applications        Application[]
   deletedApplications DeletedApplication[]
   applicationFiles    ApplicationFile[]
@@ -41,6 +42,19 @@ model Session {
   expiresAt DateTime
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model OAuthAccount {
+  id                String   @id @default(cuid())
+  userId            String
+  provider          String
+  providerAccountId String
+  email             String?
+  createdAt         DateTime @default(now())
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
 }
 
 model Application {

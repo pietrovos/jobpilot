@@ -31,6 +31,7 @@ export async function GET(
     statusChanges: application.statusChanges.map((change) => ({ ...change, changedAt: change.changedAt.toISOString() })),
     files: application.files.map((file) => ({
       id: file.id,
+      userDocumentId: file.userDocumentId,
       fileName: file.fileName,
       fileType: file.fileType,
       fileSize: file.fileSize,

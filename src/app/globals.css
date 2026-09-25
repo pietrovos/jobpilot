@@ -271,6 +271,34 @@ body {
   opacity: 0.42;
 }
 
+.detail-field-hint {
+  display: none;
+}
+
+.detail-field:focus-visible {
+  outline: none;
+}
+
+.detail-field:focus:has(> .detail-field-hint) {
+  padding-right: 9rem;
+}
+
+.detail-field-hint {
+  position: absolute;
+  right: 0;
+  bottom: 0.75rem;
+}
+
+.detail-field:focus > .detail-field-hint {
+  display: block;
+}
+
+.application-card:focus-visible {
+  outline: none;
+  background-color: rgb(56 189 248 / 0.08);
+  box-shadow: 0 0 24px rgb(56 189 248 / 0.14);
+}
+
 .game-menu-button {
   position: relative;
   overflow: hidden;
@@ -313,8 +341,8 @@ body {
   --game-menu-text-rgb: 255 205 213;
 }
 
-.game-menu-button:hover,
-.game-menu-button:focus-visible {
+.detail-section-grid:not(.keyboard-navigating) .game-menu-button:hover,
+.game-menu-button:focus {
   border-color: rgb(var(--game-menu-rgb) / 0.72);
   background:
     radial-gradient(circle at 50% 20%, rgb(var(--game-menu-rgb) / 0.14), transparent 58%),
@@ -361,7 +389,7 @@ body {
 }
 
 .recycle-shell {
-  position: relative;
+  position: fixed;
   border-color: rgb(148 163 184 / 0.18);
   border-radius: 0.5rem;
   background:
