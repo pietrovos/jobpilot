@@ -72,7 +72,7 @@ function AddApplicationModal({
   onClose: () => void;
 }) {
   return (
-    <Dialog label="Add application" onClose={onClose}
+    <Dialog label="Add application" onClose={onClose} initialFocusSelector="#autofillUrl"
       className="details-overlay fixed inset-0 z-50 grid place-items-center bg-slate-950/76 px-4 py-6 backdrop-blur-sm"
     >
       <div className={`new-app-shell status-graph-scroll w-full overflow-y-auto border bg-slate-950/95 shadow-2xl shadow-black/45 ${isExpanded ? "h-[calc(100vh-3rem)] max-w-[92rem]" : "max-h-[calc(100vh-3rem)] max-w-3xl"}`}>

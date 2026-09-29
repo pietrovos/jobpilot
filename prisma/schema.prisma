@@ -66,6 +66,7 @@ model Application {
   location      String?
   salary        String?
   jobUrl        String?
+  jobId         String?
   companyLogoPath String?
   companyLogoType String?
   jobPostedAt   String?

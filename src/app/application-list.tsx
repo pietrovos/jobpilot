@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ApplicationStatus } from "@/generated/prisma/enums";
@@ -8,6 +8,7 @@ import { Dialog } from "./ui/dialog";
 import { ActionForm, mutationFeedback, UnsavedChangesProvider, uploadError, useDiscardChanges } from "./ui/action-form";
 import type { ApplicationDetail, ApplicationSummary } from "./application-types";
 import type { UserDocumentItem } from "./document-types";
+import { jobIdSource } from "@/lib/job-id";
 
 type DeleteTarget = {
   ids: string[];
@@ -17,6 +18,10 @@ type DeleteTarget = {
 type RankAnimation = { direction: "up" | "down"; status: ApplicationStatus };
 
 type DetailSection = "jobDescription" | "notes" | "files" | "emailLog" | "interviews" | "offer" | "history";
+const TimeZoneContext = createContext("UTC");
+const subscribeTimeZone = () => () => {};
+const browserTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+const serverTimeZone = () => "UTC";
 
 type ApplicationListProps = {
   applications: ApplicationSummary[];
@@ -99,6 +104,13 @@ const rowStatusBaseStyles: Record<ApplicationStatus, string> = {
   INTERVIEWING: "border-purple-400/35",
   OFFER: "border-orange-400/60",
   REJECTED: "border-rose-400/25",
+};
+
+const rowStatusFocusStyles: Record<ApplicationStatus, string> = {
+  APPLIED: "focus:border-blue-400/70 focus:bg-blue-500/[0.08] focus:shadow-[0_0_28px_rgb(37_99_235/0.14)]",
+  INTERVIEWING: "focus:border-fuchsia-300/80 focus:bg-[radial-gradient(circle_at_18%_50%,rgb(192_132_252/0.14),transparent_34%),linear-gradient(90deg,rgb(88_28_135/0.24),rgb(15_23_42/0.28))] focus:shadow-[0_0_36px_rgb(168_85_247/0.28),inset_0_0_18px_rgb(168_85_247/0.08)]",
+  OFFER: "focus:border-yellow-100 focus:bg-[radial-gradient(circle_at_18%_50%,rgb(251_146_60/0.34),transparent_32%),radial-gradient(circle_at_75%_45%,rgb(253_186_116/0.20),transparent_28%),linear-gradient(90deg,rgb(154_52_18/0.56),rgb(15_23_42/0.25))] focus:shadow-[0_0_72px_rgb(251_146_60/0.52),0_0_26px_rgb(253_186_116/0.32),inset_0_0_34px_rgb(245_158_11/0.18)]",
+  REJECTED: "focus:border-rose-400/70 focus:bg-rose-500/[0.07] focus:shadow-[0_0_28px_rgb(225_29_72/0.14)]",
 };
 
 const selectedRowStatusStyles: Record<ApplicationStatus, string> = {
@@ -274,6 +286,8 @@ export function ApplicationList({
   const [fileDropTargetId, setFileDropTargetId] = useState<string | null>(null);
   const [optimisticOrderIds, setOptimisticOrderIds] = useState<string[] | null>(null);
   const [sortNotice, setSortNotice] = useState(false);
+  const [collapsedDays, setCollapsedDays] = useState<string[]>([]);
+  const timeZone = useSyncExternalStore(subscribeTimeZone, browserTimeZone, serverTimeZone);
   const [rankAnimations, setRankAnimations] = useState<Record<string, RankAnimation>>({});
   const dragStartOrderIds = useRef<string[] | null>(null);
   const droppedRef = useRef(false);
@@ -283,6 +297,13 @@ export function ApplicationList({
   const orderedApplications = sortMode === "custom" && optimisticOrderIds
     ? orderApplications(applications, optimisticOrderIds)
     : applications;
+  const dayGroups: Array<{ day: string; applications: ApplicationSummary[] }> = [];
+  for (const application of orderedApplications) {
+    const day = applicationDay(application.appliedAt, timeZone);
+    const lastGroup = dayGroups.at(-1);
+    if (lastGroup?.day === day) lastGroup.applications.push(application);
+    else dayGroups.push({ day, applications: [application] });
+  }
   const activeDetailsApplication = detailsApplication;
   const selectedCount = selectedIds.length;
 
@@ -291,7 +312,7 @@ export function ApplicationList({
       if (!["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight"].includes(event.key)) return;
       if (document.activeElement !== document.body && document.activeElement !== document.documentElement) return;
       if (document.querySelector("dialog[open]")) return;
-      const first = listRef.current?.querySelector<HTMLElement>("[data-application-id]");
+      const first = Array.from(listRef.current?.querySelectorAll<HTMLElement>("[data-application-id]") ?? []).find((card) => !card.closest("[hidden]"));
       if (!first) return;
       event.preventDefault();
       setKeyboardNavigatingList(true);
@@ -318,9 +339,12 @@ export function ApplicationList({
     if (["ArrowDown", "ArrowUp", "ArrowRight", "ArrowLeft"].includes(event.key)) {
       event.preventDefault();
       setKeyboardNavigatingList(true);
-      const next = index + (["ArrowDown", "ArrowRight"].includes(event.key) ? 1 : -1);
-      if (next < 0 || next >= orderedApplications.length) return;
-      listRef.current?.querySelector<HTMLElement>(`[data-application-id="${orderedApplications[next].id}"]`)?.focus();
+      const step = ["ArrowDown", "ArrowRight"].includes(event.key) ? 1 : -1;
+      for (let next = index + step; next >= 0 && next < orderedApplications.length; next += step) {
+        if (collapsedDays.includes(applicationDay(orderedApplications[next].appliedAt, timeZone))) continue;
+        listRef.current?.querySelector<HTMLElement>(`[data-application-id="${orderedApplications[next].id}"]`)?.focus();
+        break;
+      }
     } else if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       void openDetails(application);
@@ -451,6 +475,7 @@ export function ApplicationList({
   }
 
   return (
+    <TimeZoneContext.Provider value={timeZone}>
     <div ref={listRef} className="mt-6 grid gap-5" onPointerMove={(event) => {
       if (event.pointerType === "mouse") setKeyboardNavigatingList(false);
     }}>
@@ -486,7 +511,22 @@ export function ApplicationList({
         </div>
       ) : null}
 
-      {orderedApplications.map((application) => {
+      {dayGroups.map((group, groupIndex) => {
+        const isCollapsed = collapsedDays.includes(group.day);
+        const dayLabel = formatApplicationDay(group.applications[0].appliedAt, timeZone);
+        return (
+          <section key={`${group.day}-${groupIndex}`} className="grid gap-4" aria-label={`Applications applied ${dayLabel}`}>
+            <button
+              type="button"
+              aria-expanded={!isCollapsed}
+              onClick={() => setCollapsedDays((current) => isCollapsed ? current.filter((day) => day !== group.day) : [...current, group.day])}
+              className="flex w-full items-center justify-between gap-3 border border-sky-300/20 bg-slate-900/65 px-5 py-3 text-left text-sm font-bold text-sky-100 transition hover:border-sky-300/45 hover:bg-sky-950/65 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300"
+            >
+              <span>{dayLabel} <span className="ml-2 font-medium text-slate-400">({group.applications.length})</span></span>
+              <span aria-hidden="true" className={`text-sky-300 transition-transform ${isCollapsed ? "-rotate-90" : ""}`}>⌄</span>
+            </button>
+            <div hidden={isCollapsed} className="grid gap-5">
+      {group.applications.map((application) => {
         const isSelected = selectedIds.includes(application.id);
         const textTheme = textStatusStyles[application.status];
         const canDrag = sortMode === "custom" && !isFiltered;
@@ -503,7 +543,7 @@ export function ApplicationList({
             className={`application-card relative border-l-2 py-6 pl-5 pr-2 transition-all duration-200 ease-out ${
               isSelected
                 ? selectedRowStatusStyles[application.status]
-                : `bg-slate-950/30 ${keyboardNavigatingList ? rowStatusBaseStyles[application.status] : rowStatusStyles[application.status]}`
+                : `bg-slate-950/30 ${keyboardNavigatingList ? rowStatusBaseStyles[application.status] : rowStatusStyles[application.status]} ${rowStatusFocusStyles[application.status]}`
             } ${isFileDropTarget ? "border-cyan-300 bg-cyan-400/10 shadow-[0_0_34px_rgb(34_211_238/0.22)]" : ""} ${rankAnimation ? rankHoldStatusStyles[rankAnimation.status] : ""} ${rankAnimation?.direction === "up" ? "rank-transition-up" : ""} ${rankAnimation?.direction === "down" ? "rank-transition-down" : ""} ${rankAnimation ? `rank-transition-${rankAnimation.status.toLowerCase()}` : ""} ${draggedId === application.id ? "opacity-45" : canDrag ? "cursor-grab active:cursor-grabbing" : "cursor-default"}`}
             onDragStart={(event) => {
               if (!canDrag) {
@@ -668,7 +708,7 @@ export function ApplicationList({
             ) : null}
 
             <div className="mt-5 flex flex-col justify-between gap-3 border-t border-white/5 pt-4 sm:flex-row sm:items-center">
-              <p className={`text-sm font-semibold ${textTheme.time}`}>Applied {formatDateTime(application.appliedAt)}</p>
+              <p className={`text-sm font-semibold ${textTheme.time}`}>Applied {formatDateTime(application.appliedAt, timeZone)}</p>
                 <StatusForm
                   key={`${application.id}-${application.status}`}
                   applicationId={application.id}
@@ -678,6 +718,10 @@ export function ApplicationList({
                 />
             </div>
           </article>
+        );
+      })}
+            </div>
+          </section>
         );
       })}
 
@@ -721,6 +765,7 @@ export function ApplicationList({
           )
         : null}
     </div>
+    </TimeZoneContext.Provider>
   );
 }
 
@@ -822,6 +867,7 @@ function ApplicationDetails({
   onDetailsChanged: () => void;
   onClose: () => void;
 }) {
+  const timeZone = useContext(TimeZoneContext);
   const [editingField, setEditingField] = useState<string | null>(null);
   const [activeDetailSection, setActiveDetailSection] = useState<DetailSection | null>(null);
   const [keyboardNavigatingSections, setKeyboardNavigatingSections] = useState(false);
@@ -1007,8 +1053,8 @@ function ApplicationDetails({
                 fields[next].focus();
               }
             }}>
-              {(["company", "role", "jobUrl", "notes"] as const).map((name) => (
-                <InlineEditableDetail key={name} application={application} editing={editingField === name} theme={modalTheme} label={{ company: "Company", role: "Role", jobUrl: "Job posting link", notes: "Application notes" }[name]} name={name} type={name === "jobUrl" ? "url" : "text"} multiline={name === "notes"} value={application[name] || "Not added"} defaultValue={application[name] ?? ""} updateApplication={updateApplication} onEdit={() => requestDiscard(() => setEditingField(name))} onDone={() => finishEditingField(name)} />
+              {(["company", "role", "jobUrl", "jobId", "notes"] as const).map((name) => (
+                <InlineEditableDetail key={name} application={application} editing={editingField === name} theme={modalTheme} label={{ company: "Company", role: "Role", jobUrl: "Job posting link", jobId: "Job ID", notes: "Application notes" }[name]} name={name} type={name === "jobUrl" ? "url" : "text"} multiline={name === "notes"} value={name === "jobId" ? formatJobId(application.jobId, application.jobUrl) : application[name] || "Not added"} defaultValue={application[name] ?? ""} updateApplication={updateApplication} onEdit={() => requestDiscard(() => setEditingField(name))} onDone={() => finishEditingField(name)} />
               ))}
               <InlineEditableDetail
                 application={application}
@@ -1017,13 +1063,13 @@ function ApplicationDetails({
                 label="Applied at"
                 name="appliedAt"
                 type="datetime-local"
-                value={formatDateTime(application.appliedAt)}
+                value={formatDateTime(application.appliedAt, timeZone)}
                 defaultValue={toDatetimeLocal(application.appliedAt)}
                 updateApplication={updateApplication}
                 onEdit={() => requestDiscard(() => setEditingField("appliedAt"))}
                 onDone={() => finishEditingField("appliedAt")}
               />
-              <Detail label="Last updated" value={formatDateTime(application.updatedAt)} navigationId="updatedAt" theme={modalTheme} />
+              <Detail label="Last updated" value={formatDateTime(application.updatedAt, timeZone)} navigationId="updatedAt" theme={modalTheme} />
               <InlineEditableDetail application={application} editing={editingField === "salary"} theme={modalTheme} label="Salary" name="salary" value={application.salary || "N/A"} defaultValue={application.salary ?? ""} valueClassName={salaryRankStyles[application.status]} updateApplication={updateApplication} onEdit={() => requestDiscard(() => setEditingField("salary"))} onDone={() => finishEditingField("salary")} />
               <InlineEditableDetail application={application} editing={editingField === "location"} theme={modalTheme} label="Location" name="location" value={application.location || "Missing"} defaultValue={application.location ?? ""} updateApplication={updateApplication} onEdit={() => requestDiscard(() => setEditingField("location"))} onDone={() => finishEditingField("location")} />
               <InlineEditableDetail application={application} editing={editingField === "jobPostedAt"} theme={modalTheme} label="Posting date" name="jobPostedAt" value={application.jobPostedAt || "Unknown"} defaultValue={application.jobPostedAt ?? ""} updateApplication={updateApplication} onEdit={() => requestDiscard(() => setEditingField("jobPostedAt"))} onDone={() => finishEditingField("jobPostedAt")} />
@@ -1126,6 +1172,7 @@ function ApplicationNotesSection({
   theme: { timeline: string; timelineItem: string; eyebrow: string; button: string; fieldInput: string };
   updateApplicationNote: (noteId: string, formData: FormData) => unknown | Promise<unknown>;
 }) {
+  const timeZone = useContext(TimeZoneContext);
   const requestDiscard = useDiscardChanges();
   const [isAddingNote, setIsAddingNote] = useState(false);
   const [isAddingFolder, setIsAddingFolder] = useState(false);
@@ -1249,7 +1296,7 @@ function ApplicationNotesSection({
               <div>
                 <p className={`text-xs font-bold uppercase tracking-[0.18em] ${theme.eyebrow}`}>Note preview</p>
                 <h4 className="mt-2 break-words text-lg font-black text-slate-100">{selectedNote.title}</h4>
-                <p className="mt-1 text-xs text-slate-500">Updated {formatDateTime(selectedNote.updatedAt)}</p>
+                 <p className="mt-1 text-xs text-slate-500">Updated {formatDateTime(selectedNote.updatedAt, timeZone)}</p>
                 <p className="mt-4 whitespace-pre-wrap break-words text-sm leading-7 text-slate-300">{selectedNote.body}</p>
               </div>
             ) : <p className="text-sm text-slate-500">Select a note to preview it here.</p>}
@@ -1270,6 +1317,7 @@ function NoteDirectory({ notes, editingNoteId, selectedNoteId, setEditingNoteId,
   updateApplicationNote: (noteId: string, formData: FormData) => unknown | Promise<unknown>;
   theme: { timelineItem: string; eyebrow: string; button: string; fieldInput: string };
 }) {
+  const timeZone = useContext(TimeZoneContext);
   const requestDiscard = useDiscardChanges();
   return (
     <div className="grid divide-y divide-white/10">
@@ -1284,7 +1332,7 @@ function NoteDirectory({ notes, editingNoteId, selectedNoteId, setEditingNoteId,
         <article key={note.id} draggable className={`group flex min-w-0 items-center gap-3 px-3 py-3 transition ${selectedNoteId === note.id ? "bg-sky-400/10" : "hover:bg-white/[0.05]"}`} onDragStart={(event) => { event.stopPropagation(); event.dataTransfer.setData("application/x-jobpilot-note", note.id); event.dataTransfer.effectAllowed = "move"; }}>
           <button type="button" className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => requestDiscard(() => setSelectedNoteId(note.id))} onDoubleClick={() => requestDiscard(() => setEditingNoteId(note.id))} onKeyDown={(event) => { if (event.key === "Enter") requestDiscard(() => setSelectedNoteId(note.id)); }} title={`Preview ${note.title}`}>
             <span className="grid size-8 shrink-0 place-items-center text-slate-400"><DirectoryIcon name="file" /></span>
-            <span className="min-w-0"><span className="block truncate text-sm font-semibold text-slate-200">{note.title}</span><span className="mt-0.5 block truncate text-xs text-slate-500">{formatDateTime(note.updatedAt)}</span></span>
+             <span className="min-w-0"><span className="block truncate text-sm font-semibold text-slate-200">{note.title}</span><span className="mt-0.5 block truncate text-xs text-slate-500">{formatDateTime(note.updatedAt, timeZone)}</span></span>
           </button>
           <ActionForm action={deleteApplicationNote.bind(null, note.id)}><button className="grid size-8 place-items-center text-slate-500 opacity-0 transition hover:bg-rose-400/10 hover:text-rose-300 group-hover:opacity-100 focus:opacity-100" aria-label="Delete note" title="Delete note"><DirectoryIcon name="trash" /></button></ActionForm>
         </article>
@@ -1329,6 +1377,7 @@ function ApplicationFiles({
   theme: { timeline: string; eyebrow: string; button: string; fieldFocus: string; fieldInput: string };
   uploadApplicationFile: (applicationId: string, formData: FormData) => unknown | Promise<unknown>;
 }) {
+  const timeZone = useContext(TimeZoneContext);
   const [previewFile, setPreviewFile] = useState<ApplicationDetail["files"][number] | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<Array<{ name: string; size: number }>>([]);
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
@@ -1500,7 +1549,7 @@ function ApplicationFiles({
                         {file.fileName}
                       </a>
                       <p className="mt-1 text-xs font-semibold text-slate-500">
-                        {formatFileSize(file.fileSize)} / {formatDateTime(file.createdAt)}
+                         {formatFileSize(file.fileSize)} / {formatDateTime(file.createdAt, timeZone)}
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -2441,16 +2490,32 @@ function DeleteConfirmation({
   );
 }
 
-function formatDateTime(date: string) {
+function formatDateTime(date: string, timeZone: string) {
   return new Intl.DateTimeFormat("en", {
     month: "short",
     day: "numeric",
     year: "numeric",
     hour: "numeric",
     minute: "2-digit",
-    timeZone: "UTC",
+    timeZone,
     timeZoneName: "short",
   }).format(new Date(date));
+}
+
+function formatApplicationDay(date: string, timeZone: string) {
+  return new Intl.DateTimeFormat("en", { weekday: "long", month: "long", day: "numeric", year: "numeric", timeZone }).format(new Date(date));
+}
+
+function applicationDay(date: string, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en", { year: "numeric", month: "2-digit", day: "2-digit", timeZone }).formatToParts(new Date(date));
+  const part = (type: string) => parts.find((item) => item.type === type)?.value;
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
+function formatJobId(jobId: string | null, jobUrl: string | null) {
+  if (!jobId) return "Not added";
+  const source = jobUrl ? jobIdSource(jobUrl) : "";
+  return source ? `${jobId} (${source})` : jobId;
 }
 
 const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];

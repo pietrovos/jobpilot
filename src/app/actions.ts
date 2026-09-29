@@ -12,6 +12,7 @@ import { createGuestSession, createSession, destroySession, getCurrentUser, isGu
 import { prisma } from "@/lib/db";
 import { dateSchema, optionalDateSchema, passwordSchema, webUrlSchema } from "@/lib/backend-validation";
 import { safeFetch } from "@/lib/safe-fetch";
+import { jobIdFromPosting, jobIdFromUrl } from "@/lib/job-id";
 import { transferGuestOwnership } from "@/lib/guest-transfer";
 import { adoptGuestWorkspace } from "@/lib/oauth-session";
 import { consumeRateLimit } from "@/lib/backend-limits";
@@ -31,12 +32,50 @@ const applicationSchema = z.object({
   location: z.string().trim().max(120).optional(),
   salary: z.string().trim().max(80).optional(),
   jobUrl: webUrlSchema.optional().or(z.literal("")),
+  jobId: z.string().trim().max(120).optional(),
   companyLogoUrl: webUrlSchema.optional().or(z.literal("")),
   jobPostedAt: z.string().trim().max(120).optional(),
   jobDescription: z.string().trim().max(12000).optional(),
   notes: z.string().trim().max(1000).optional(),
   appliedAt: optionalDateSchema,
 });
+
+const applicationFieldLabels: Record<keyof z.infer<typeof applicationSchema>, string> = {
+  company: "Company",
+  role: "Role",
+  status: "Status",
+  location: "Location",
+  salary: "Salary",
+  jobUrl: "Job posting link",
+  jobId: "Job ID",
+  companyLogoUrl: "Company logo URL",
+  jobPostedAt: "Posting date",
+  jobDescription: "Job description",
+  notes: "Notes",
+  appliedAt: "Application date",
+};
+
+function applicationValidationMessage(error: z.ZodError, formData: FormData) {
+  const issue = error.issues[0];
+  const field = issue?.path[0];
+  if (typeof field !== "string" || !(field in applicationFieldLabels)) {
+    return "Check the application fields and try again.";
+  }
+
+  const label = applicationFieldLabels[field as keyof typeof applicationFieldLabels];
+  const entry = formData.get(field);
+  const length = typeof entry === "string" ? entry.trim().length : 0;
+  if (issue.code === "too_big" && issue.origin === "string") {
+    return `${label} is too long (${length.toLocaleString("en-US")} characters; maximum ${issue.maximum.toLocaleString("en-US")}).`;
+  }
+  if (issue.code === "too_small" && issue.origin === "string") {
+    return length === 0 ? `${label} is required.` : `${label} must be at least ${issue.minimum} characters.`;
+  }
+  if (field === "jobUrl" || field === "companyLogoUrl") return `${label} must be a valid HTTP or HTTPS URL.`;
+  if (field === "appliedAt") return `${label} must be a valid date.`;
+  if (field === "status") return "Choose a valid application status.";
+  return `Check ${label.toLowerCase()} and try again.`;
+}
 
 const emailLogSchema = z.object({
   subject: z.string().trim().min(1).max(160),
@@ -94,6 +133,7 @@ export type ExtractJobState = {
     location: string;
     salary: string;
     jobUrl: string;
+    jobId: string;
     companyLogoUrl: string;
     jobPostedAt: string;
     jobDescription: string;
@@ -109,6 +149,7 @@ const emptyExtractJobState: ExtractJobState = {
     location: "",
     salary: "",
     jobUrl: "",
+    jobId: "",
     companyLogoUrl: "",
     jobPostedAt: "",
     jobDescription: "",
@@ -289,6 +330,7 @@ export async function extractJobPost(
       values: {
         ...extracted,
         jobUrl: normalizedUrl,
+        jobId: extracted.jobId || jobIdFromUrl(normalizedUrl),
       },
     };
   } catch {
@@ -306,6 +348,7 @@ export async function createApplication(formData: FormData) {
     location: value(formData, "location"),
     salary: value(formData, "salary"),
     jobUrl: value(formData, "jobUrl"),
+    jobId: value(formData, "jobId"),
     companyLogoUrl: value(formData, "companyLogoUrl"),
     jobPostedAt: value(formData, "jobPostedAt"),
     jobDescription: value(formData, "jobDescription"),
@@ -314,7 +357,7 @@ export async function createApplication(formData: FormData) {
   });
 
   if (!parsed.success) {
-    return { success: false, message: "Check the application fields, dates and URLs." };
+    return { success: false, message: applicationValidationMessage(parsed.error, formData) };
   }
 
   const files = uploadedFiles(formData);
@@ -338,6 +381,7 @@ export async function createApplication(formData: FormData) {
       location: nullable(parsed.data.location),
       salary: nullable(parsed.data.salary),
       jobUrl: nullable(parsed.data.jobUrl),
+      jobId: nullable(parsed.data.jobId || jobIdFromUrl(parsed.data.jobUrl || "")),
       jobPostedAt: nullable(parsed.data.jobPostedAt),
       jobDescription: nullable(parsed.data.jobDescription),
       notes: nullable(parsed.data.notes),
@@ -393,12 +437,12 @@ export async function updateApplication(applicationId: string, formData: FormDat
   const parsed = applicationSchema.extend({ status: z.enum(ApplicationStatus).optional() }).partial().safeParse(Object.fromEntries(fields.map((key) => [key, value(formData, key)])));
 
   if (!parsed.success) {
-    return { success: false, message: "Check the application fields, dates and URLs." };
+    return { success: false, message: applicationValidationMessage(parsed.error, formData) };
   }
 
   const application = await prisma.application.findFirst({
     where: { id: applicationId, userId: user.id, deletedAt: null },
-    select: { status: true },
+    select: { status: true, jobId: true },
   });
 
   if (!application) {
@@ -414,6 +458,9 @@ export async function updateApplication(applicationId: string, formData: FormDat
       location: parsed.data.location === undefined ? undefined : nullable(parsed.data.location),
       salary: parsed.data.salary === undefined ? undefined : nullable(parsed.data.salary),
       jobUrl: parsed.data.jobUrl === undefined ? undefined : nullable(parsed.data.jobUrl),
+      jobId: parsed.data.jobId === undefined
+        ? parsed.data.jobUrl && !application.jobId ? nullable(jobIdFromUrl(parsed.data.jobUrl)) : undefined
+        : nullable(parsed.data.jobId),
       jobPostedAt: parsed.data.jobPostedAt === undefined ? undefined : nullable(parsed.data.jobPostedAt),
       jobDescription: parsed.data.jobDescription === undefined ? undefined : nullable(parsed.data.jobDescription),
       notes: parsed.data.notes === undefined ? undefined : nullable(parsed.data.notes),
@@ -959,6 +1006,7 @@ function failedExtract(jobUrl: string): ExtractJobState {
     values: {
       ...emptyExtractJobState.values,
       jobUrl,
+      jobId: jobIdFromUrl(jobUrl),
     },
   };
 }
@@ -984,7 +1032,7 @@ function extractFromHtml(html: string, jobUrl: string) {
   const title = structuredTitle || pageTitle;
 
   if (isBlockedOrLoginPage(title)) {
-    return { ...emptyExtractJobState.values, jobUrl };
+    return { ...emptyExtractJobState.values, jobUrl, jobId: jobIdFromUrl(jobUrl) };
   }
 
   const linkedInDetails = parseLinkedInTitle(pageTitle || title);
@@ -1006,6 +1054,7 @@ function extractFromHtml(html: string, jobUrl: string) {
     location: clean(location),
     salary: clean(salary),
     jobUrl,
+    jobId: jobIdFromUrl(jobUrl) || jobIdFromPosting(jsonLd?.identifier),
     companyLogoUrl,
     jobPostedAt: clean(postedAt),
     jobDescription: cleanDescription(description),

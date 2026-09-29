@@ -295,8 +295,6 @@ body {
 
 .application-card:focus-visible {
   outline: none;
-  background-color: rgb(56 189 248 / 0.08);
-  box-shadow: 0 0 24px rgb(56 189 248 / 0.14);
 }
 
 .game-menu-button {

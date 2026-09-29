@@ -95,6 +95,31 @@ test("application details open with the keyboard", async ({ page, isMobile }) =>
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
+test("save explains when a job description exceeds the limit", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByRole("button", { name: "Continue as guest" }).click();
+  await page.getByRole("button", { name: "Add application", exact: true }).click();
+  const creation = page.getByRole("dialog", { name: "Add application", exact: true });
+  await creation.getByRole("button", { name: "Enter details manually" }).click();
+  await creation.getByRole("textbox", { name: "Company", exact: true }).fill("Motorola Solutions");
+  await creation.getByRole("textbox", { name: "Role", exact: true }).fill("Junior Software Engineer");
+  const description = creation.getByRole("textbox", { name: "Job description" });
+  await description.fill("A".repeat(13_129));
+  await creation.getByRole("button", { name: "Fullscreen", exact: true }).click();
+  await expect(creation.getByRole("button", { name: "Exit fullscreen" })).toHaveAttribute("aria-expanded", "true");
+  await expect(description).toHaveValue("A".repeat(13_129));
+  await description.press("Escape");
+  await expect(creation).toBeVisible();
+  await expect(creation.getByRole("button", { name: "Fullscreen", exact: true })).toBeVisible();
+  await expect(description).toHaveValue("A".repeat(13_129));
+  await creation.getByRole("button", { name: "Save application" }).click();
+  await expect(creation.getByRole("alert")).toHaveText("Job description is too long (13,129 characters; maximum 12,000).");
+  await expect(description).toHaveValue("A".repeat(13_129));
+  await description.fill("A".repeat(12_000));
+  await creation.getByRole("button", { name: "Save application" }).click();
+  await expect(creation).not.toBeVisible();
+});
+
 test("arrow keys focus the first application and move between applications", async ({ page, isMobile }) => {
   await page.goto("/login");
   await page.getByRole("button", { name: "Continue as guest" }).click();
@@ -110,15 +135,23 @@ test("arrow keys focus the first application and move between applications", asy
 
   const cards = page.locator("article[data-application-id]");
   await expect(cards).toHaveCount(2);
+  let hoverStyles: { background: string; border: string; shadow: string } | undefined;
   if (!isMobile) {
     await cards.nth(1).hover();
-    await expect(cards.nth(1)).not.toHaveCSS("box-shadow", "none");
+    await expect(cards.nth(1)).toHaveCSS("box-shadow", /28px/);
+    hoverStyles = await cards.nth(1).evaluate((card) => {
+      const style = getComputedStyle(card);
+      return { background: style.backgroundColor, border: style.borderLeftColor, shadow: style.boxShadow };
+    });
   }
   await page.evaluate(() => (document.activeElement as HTMLElement).blur());
   await page.keyboard.press("ArrowDown");
   await expect(cards.nth(0)).toBeFocused();
   if (!isMobile) {
     await expect(cards.nth(1)).toHaveCSS("box-shadow", "none");
+    await expect(cards.nth(0)).toHaveCSS("box-shadow", hoverStyles!.shadow);
+    await expect(cards.nth(0)).toHaveCSS("border-left-color", hoverStyles!.border);
+    await expect(cards.nth(0)).toHaveCSS("background-color", hoverStyles!.background);
     const hoveredCard = await cards.nth(1).boundingBox();
     if (!hoveredCard) throw new Error("Second application card is missing");
     await page.mouse.move(hoveredCard.x + hoveredCard.width / 2 + 2, hoveredCard.y + hoveredCard.height / 2);
@@ -254,7 +287,7 @@ test("guest can create manually, keep multiline notes, restore and convert to an
     input.dispatchEvent(new Event("input", { bubbles: true }));
     form.requestSubmit();
   });
-  await expect(page.getByText("Check the application fields, dates and URLs.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Company is required.", { exact: true })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Company", exact: true })).toHaveValue("");
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await page.getByText("Company", { exact: true }).dblclick();

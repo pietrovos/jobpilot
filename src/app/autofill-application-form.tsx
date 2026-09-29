@@ -15,6 +15,7 @@ const initialExtractState: ExtractJobState = {
     location: "",
     salary: "",
     jobUrl: "",
+    jobId: "",
     companyLogoUrl: "",
     jobPostedAt: "",
     jobDescription: "",
@@ -39,6 +40,7 @@ export function AutofillApplicationForm({
   );
   const [linkPulse, setLinkPulse] = useState(false);
   const [manualEntry, setManualEntry] = useState(false);
+  const autofillButtonRef = useRef<HTMLButtonElement>(null);
   const values = extractState.values;
   const hasAutofillResult = values.jobUrl.length > 0;
 
@@ -70,11 +72,15 @@ export function AutofillApplicationForm({
               className={`new-app-input min-w-0 flex-1 px-4 py-3 font-normal normal-case tracking-normal ${linkPulse ? "new-app-link-captured" : ""}`}
               onPaste={() => {
                 setLinkPulse(false);
-                window.setTimeout(() => setLinkPulse(true), 0);
+                window.setTimeout(() => {
+                  setLinkPulse(true);
+                  autofillButtonRef.current?.focus();
+                }, 0);
                 window.setTimeout(() => setLinkPulse(false), 1500);
               }}
             />
             <button
+              ref={autofillButtonRef}
               className="border border-sky-700/45 bg-sky-950/40 px-5 py-3 font-black text-sky-400 transition hover:bg-sky-900/55 disabled:cursor-not-allowed disabled:opacity-60"
               disabled={isExtracting}
             >
@@ -103,6 +109,7 @@ export function AutofillApplicationForm({
             </p>
             <Field name="company" label="Company" placeholder="Example: Lakeside Medical" defaultValue={values.company} required />
             <Field name="jobUrl" label="Job posting link (optional)" type="url" defaultValue={values.jobUrl} />
+            <Field name="jobId" label="Job ID (optional)" placeholder="Example: REQ-12345" defaultValue={values.jobId} />
             <Field
               name="role"
               label="Role"
@@ -120,16 +127,7 @@ export function AutofillApplicationForm({
               <Field name="salary" label="Salary" placeholder="Example: $55k-$70k" defaultValue={values.salary} />
             </div>
             <input name="status" type="hidden" value="APPLIED" />
-            <label className="group/field grid min-w-0 gap-1 border-b border-sky-800/45 py-3 text-sm font-black uppercase tracking-[0.16em] text-sky-500 transition hover:border-sky-600/60">
-              Job description
-              <textarea
-                name="jobDescription"
-                placeholder="Example: Responsibilities, qualifications, and benefits..."
-                rows={7}
-                defaultValue={values.jobDescription}
-                className="new-app-input min-h-44 w-full min-w-0 resize-none px-3 py-3 font-normal normal-case tracking-normal"
-              />
-            </label>
+            <JobDescriptionEditor defaultValue={values.jobDescription} />
             <label className="group/field grid min-w-0 gap-1 border-b border-sky-800/45 py-3 text-sm font-black uppercase tracking-[0.16em] text-sky-500 transition hover:border-sky-600/60">
               Notes
               <textarea
@@ -152,6 +150,48 @@ export function AutofillApplicationForm({
           </div>
         </ActionForm>
       ) : null}
+    </div>
+  );
+}
+
+function JobDescriptionEditor({ defaultValue }: { defaultValue: string }) {
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (!isFullscreen) return;
+    function exitOnEscape(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      setIsFullscreen(false);
+    }
+    window.addEventListener("keydown", exitOnEscape, true);
+    return () => window.removeEventListener("keydown", exitOnEscape, true);
+  }, [isFullscreen]);
+
+  function toggleFullscreen() {
+    setIsFullscreen((current) => !current);
+    textareaRef.current?.focus();
+  }
+
+  return (
+    <div className={`group/field grid min-w-0 gap-1 border-b border-sky-800/45 py-3 text-sm font-black uppercase tracking-[0.16em] text-sky-500 transition hover:border-sky-600/60 ${isFullscreen ? "fixed inset-0 z-[70] grid-rows-[auto_minmax(0,1fr)] gap-4 overflow-hidden border-0 bg-slate-950 p-5 sm:p-8" : ""}`}>
+      <div className="flex items-center justify-between gap-3">
+        <label htmlFor="new-application-description">Job description</label>
+        <button type="button" onClick={toggleFullscreen} aria-expanded={isFullscreen} className="border border-sky-300/30 px-3 py-2 text-xs font-bold normal-case tracking-normal text-sky-100 hover:border-sky-200/60 hover:bg-sky-400/10">
+          {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+        </button>
+      </div>
+      <textarea
+        ref={textareaRef}
+        id="new-application-description"
+        name="jobDescription"
+        placeholder="Example: Responsibilities, qualifications, and benefits..."
+        rows={7}
+        defaultValue={defaultValue}
+        className={`new-app-input w-full min-w-0 resize-none px-3 py-3 font-normal normal-case tracking-normal ${isFullscreen ? "h-full min-h-0" : "min-h-44"}`}
+      />
     </div>
   );
 }

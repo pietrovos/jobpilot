@@ -32,6 +32,8 @@ export function Dialog({ children, label, onClose, onEscape, onBack, className =
       onKeyDownCapture={(event) => {
         if (!onBack || event.key !== "Backspace" || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
         if (event.target instanceof Element && event.target.closest("dialog") !== event.currentTarget) return;
+        if (event.target instanceof HTMLElement && (event.target.isContentEditable || event.target.closest("textarea, select"))) return;
+        if (event.target instanceof HTMLInputElement && !["button", "checkbox", "file", "hidden", "radio", "reset", "submit"].includes(event.target.type)) return;
         event.preventDefault();
         event.stopPropagation();
         onBack();

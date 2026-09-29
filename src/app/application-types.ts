@@ -14,6 +14,7 @@ export type ApplicationSummary = {
 };
 
 export type ApplicationDetail = ApplicationSummary & {
+  jobId: string | null;
   jobPostedAt: string | null;
   jobDescription: string | null;
   createdAt: string;
