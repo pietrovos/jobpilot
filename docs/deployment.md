@@ -23,6 +23,10 @@ The process working directory must be the application release root. Mount `/srv/
 
 `deploy:prepare` does not provision storage, install dependencies, stop/start a service, create backups, configure HTTPS, or deploy to a cloud. Those remain operator responsibilities. A build failure occurs before migration, but a migration failure still needs investigation; never blindly reset or mark migrations applied.
 
+## Outbound Traffic
+
+Autofill fetches job pages from arbitrary public HTTPS hosts, so the host needs outbound DNS (53) and HTTPS (443). The app refuses private, loopback, link-local, and other reserved IPv4 targets and pins each connection to the address it checked, but an egress firewall that blocks internal networks is still a sensible second layer. Outbound IPv6 is not used.
+
 ## Reverse Proxy
 
 Terminate TLS at a trusted reverse proxy and expose only that proxy publicly. Forward the original Host and scheme correctly; Server Actions use origin checks. Do not add wildcard allowed origins. Production session cookies are Secure and require HTTPS outside localhost.

@@ -19,6 +19,9 @@
   proxy, so one client cannot lock out every login.
 - Added email password reset with single-use, expiring, hashed tokens.
 - Added README screenshots and a walkthrough recorded from the demo seed.
+- Made autofill work on any public career page, read Greenhouse, Lever,
+  SmartRecruiters, Workable, Workday, and LinkedIn through their public APIs,
+  and added a Save to JobPilot bookmark button for sites that block servers.
 
 ## Next Improvements
 

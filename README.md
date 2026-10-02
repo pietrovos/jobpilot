@@ -16,9 +16,13 @@ in one place. The data stays on the machine or server running the application.
 
 ## Features
 
-- Paste a job posting link from LinkedIn, Indeed, Greenhouse, Lever, Ashby,
-  Workable, or SmartRecruiters to fill in the company, role, location, salary,
-  logo, and description
+- Paste a job posting link to fill in the company, role, location, salary,
+  logo, and description. Greenhouse, Lever, SmartRecruiters, Workable, and
+  Workday are read through their public job APIs, LinkedIn through its public
+  guest pages, and other sites through the structured job data most career
+  pages publish.
+- A "Save to JobPilot" bookmark button for sites that block automated reading,
+  such as Indeed. It reads the posting from the page open in your browser.
 - Search, filter by status, sort, drag to reorder, and group applications by
   the day you applied
 - For each application: status history, notes in folders, interview rounds,
@@ -44,10 +48,11 @@ in one place. The data stays on the machine or server running the application.
   application's owner.
 - Signing up moves the whole guest workspace inside one database transaction,
   so a failure cannot leave records split between two owners.
-- The job-page importer only fetches HTTPS pages on an allowlist of job sites.
-  It checks every redirect, rejects private addresses, pins the resolved IP,
-  and caps response size and time. The HTML parser is a separate module with
-  its own tests.
+- The job-page importer fetches public HTTPS pages only. It checks every
+  redirect, rejects private addresses, pins the resolved IP, and caps response
+  size and time. JSON is only fetched from known job-site APIs, and logos only
+  from known CDNs or the job page's own site. The parsers are separate modules
+  tested against recorded fixtures.
 - Images are decoded and re-encoded before they can be previewed, file types
   are checked by content, and storage quotas are enforced in the database.
 - Deleting an application only marks it. Restoring it brings back its notes,
@@ -130,9 +135,12 @@ handle changes to application data, and Prisma queries scope records to the
 current account. Private files are returned through authenticated route
 handlers instead of being placed in a public directory.
 
-The job-page importer accepts configured HTTPS hosts only. It checks redirects,
-rejects private IPv4 targets, pins the resolved connection, and limits response
-size and duration. Uploaded images are decoded and written back in a known
+The job-page importer fetches public HTTPS pages from any host. It resolves the
+host itself, rejects private and reserved IPv4 addresses, pins the connection
+to the checked address, re-checks every redirect, and limits response size and
+duration. Autofill is limited to 20 fetches per user per hour. The bookmark
+button sends what it reads in the URL fragment, which never reaches server
+logs, and the server validates it like any other form input. Uploaded images are decoded and written back in a known
 format. PDFs and text files are always served as downloads.
 
 The application is designed for one Node process with persistent local storage.
