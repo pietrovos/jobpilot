@@ -2,11 +2,13 @@
   "name": "jobpilot",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "engines": {
     "node": "24.x"
   },
   "scripts": {
-    "dev": "sh -c 'npx --yes --package=node@24.21.0 -- node node_modules/next/dist/bin/next dev & pid=$!; trap \"kill $pid; exit\" INT TERM; until curl --silent --output /dev/null http://localhost:3000; do sleep 0.2; done; chromium http://localhost:3000 >/dev/null 2>&1 & wait $pid'",
+    "dev": "next dev",
+    "dev:open": "sh -c 'npx --yes --package=node@24.21.0 -- node node_modules/next/dist/bin/next dev & pid=$!; trap \"kill $pid; exit\" INT TERM; until curl --silent --output /dev/null http://localhost:3000; do sleep 0.2; done; chromium http://localhost:3000 >/dev/null 2>&1 & wait $pid'",
     "build": "npm run prisma:generate && next build",
     "start": "node scripts/start.mjs",
     "lint": "eslint",
