@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 test("detail workspace supports email and note editing with readable content on desktop and mobile", async ({ page }) => {
   await page.goto("/login");

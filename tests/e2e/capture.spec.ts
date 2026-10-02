@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./fixtures";
 
 // An invented posting laid out like a site that blocks server-side fetches.
 const jobPage = `<!doctype html><html><head><title>Developer Experience Engineer - Remote | Fictional Board</title></head>

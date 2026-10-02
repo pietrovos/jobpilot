@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 test("a saved job link fills its ID and shows the source in details", async ({ page }) => {
   await page.goto("/login");

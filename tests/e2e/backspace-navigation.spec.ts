@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 test("Backspace navigates details without interrupting editable fields", async ({ page }) => {
   await page.goto("/login");

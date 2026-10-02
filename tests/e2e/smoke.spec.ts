@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 test("anonymous dashboard redirects and auth navigation renders", async ({ page }) => {
   await page.goto("/");

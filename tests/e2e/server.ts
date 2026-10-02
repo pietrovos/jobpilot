@@ -6,7 +6,7 @@ import { mailOutbox } from "./mail-outbox";
 const db = temporaryDatabase();
 rmSync(mailOutbox, { recursive: true, force: true });
 const server = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "--hostname", "localhost", "--port", "3100"], {
-  env: { ...db.env, NODE_ENV: "production", MAIL_OUTBOX: mailOutbox, APP_URL: "http://localhost:3100" }, stdio: "inherit",
+  env: { ...db.env, NODE_ENV: "production", TRUSTED_PROXY_IP_HEADER: "x-e2e-client", MAIL_OUTBOX: mailOutbox, APP_URL: "http://localhost:3100" }, stdio: "inherit",
 });
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => server.kill(signal));

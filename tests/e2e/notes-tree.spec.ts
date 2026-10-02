@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 test("notes tree expands folders independently and moves notes between folders and root", async ({ page }) => {
   await page.goto("/login");

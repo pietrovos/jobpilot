@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 test("attach a saved document to an existing application without removing it from Documents", async ({ page }) => {
   await page.goto("/login");

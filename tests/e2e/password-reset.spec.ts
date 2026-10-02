@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 import { latestMailTo } from "./mail-outbox";
 
 test("a forgotten password can be reset once from the emailed link", async ({ page }) => {

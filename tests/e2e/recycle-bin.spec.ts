@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 test("permanently deletes one recycled application and empties the rest", async ({ page }) => {
   await page.goto("/login");
