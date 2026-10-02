@@ -16,7 +16,8 @@ test("Backspace navigates details without interrupting editable fields", async (
   await details.getByRole("button", { name: "Files", exact: true }).click();
   await details.getByLabel("Attach files, up to 10 MB each and 30 MB total").focus();
   await page.keyboard.press("Backspace");
-  await expect(details.getByRole("group", { name: "Company" })).toBeVisible();
+  await expect(details.getByRole("group", { name: "Job description", exact: true })).toBeVisible();
+  await details.getByRole("button", { name: "Additional details", exact: true }).click();
 
   await details.getByRole("group", { name: "Company" }).focus();
   await page.keyboard.press("Enter");
@@ -27,12 +28,13 @@ test("Backspace navigates details without interrupting editable fields", async (
   await expect(companyInput).toHaveValue("Unsaved company nam");
   await expect(page.getByRole("dialog", { name: "Discard unsaved changes" })).not.toBeVisible();
 
-  await details.getByRole("button", { name: "Close", exact: true }).focus();
+  await details.getByRole("button", { name: "Back to details", exact: true }).focus();
   await page.keyboard.press("Backspace");
   await expect(page.getByRole("dialog", { name: "Discard unsaved changes" })).toBeVisible();
   await page.getByRole("button", { name: "Discard changes" }).click();
   await expect(details.getByRole("group", { name: "Company" })).toBeVisible();
 
+  await details.getByRole("button", { name: "Back to details", exact: true }).click();
   await details.getByRole("button", { name: "Notes", exact: true }).click();
   await details.getByRole("button", { name: "New note" }).click();
   const noteTitle = details.getByRole("textbox", { name: "Note title" });

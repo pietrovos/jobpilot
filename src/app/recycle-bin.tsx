@@ -13,10 +13,21 @@ type DeletedApplicationItem = {
 type RecycleBinProps = {
   applications: DeletedApplicationItem[];
   restoreDeletedApplication: (deletedApplicationId: string) => unknown | Promise<unknown>;
+  permanentlyDeleteApplication: (deletedApplicationId: string) => unknown | Promise<unknown>;
+  emptyRecycleBin: () => unknown | Promise<unknown>;
+  permanentlyDeleteApplications: (formData: FormData) => unknown | Promise<unknown>;
 };
 
-export function RecycleBin({ applications, restoreDeletedApplication }: RecycleBinProps) {
+export function RecycleBin({ applications, restoreDeletedApplication, permanentlyDeleteApplication, emptyRecycleBin, permanentlyDeleteApplications }: RecycleBinProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const selectedApplications = applications.filter((application) => selectedIds.has(application.id));
+  const toggleSelection = (id: string) => setSelectedIds((previous) => {
+    const next = new Set(previous);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return next;
+  });
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -86,20 +97,41 @@ export function RecycleBin({ applications, restoreDeletedApplication }: RecycleB
                 </div>
               ) : (
                 <div className="grid gap-2">
+                  <ActionForm action={emptyRecycleBin} className="mb-2 [&[aria-busy=true]_button]:pointer-events-none [&[aria-busy=true]_button]:opacity-50">
+                    <button onClick={(event) => { if (!window.confirm("Are you sure you want to permanently delete all applications in the recycle bin? This cannot be undone.")) event.preventDefault(); }} className="recycle-delete w-full px-3 py-2 text-xs font-bold transition">Empty recycle bin</button>
+                  </ActionForm>
+                  <p className="text-xs text-slate-400">Ctrl-click items to select them, or use the checkboxes.</p>
+                  {selectedApplications.length > 0 ? (
+                    <ActionForm action={permanentlyDeleteApplications} onSuccess={() => setSelectedIds(new Set())} className="[&[aria-busy=true]_button]:pointer-events-none [&[aria-busy=true]_button]:opacity-50">
+                      {selectedApplications.map((application) => <input key={application.id} type="hidden" name="applicationIds" value={application.id} />)}
+                      <button onClick={(event) => { if (!window.confirm(`Are you sure you want to permanently delete these ${selectedApplications.length} selected applications? This cannot be undone.`)) event.preventDefault(); }} className="recycle-delete w-full px-3 py-2 text-xs font-bold transition">Delete selected ({selectedApplications.length})</button>
+                    </ActionForm>
+                  ) : null}
                   {applications.map((application) => (
-                    <article key={application.id} className="recycle-card flex items-center justify-between gap-3 border px-4 py-3">
+                    <article key={application.id} onClick={(event) => {
+                      if ((event.ctrlKey || event.metaKey) && !(event.target as HTMLElement).closest("button, input, form")) {
+                        event.preventDefault();
+                        toggleSelection(application.id);
+                      }
+                    }} className={`recycle-card flex items-center justify-between gap-3 border px-4 py-3 ${selectedIds.has(application.id) ? "recycle-selected" : ""}`}>
+                      <input type="checkbox" checked={selectedIds.has(application.id)} onChange={() => toggleSelection(application.id)} aria-label={`Select ${application.company} — ${application.role}`} className="size-4 shrink-0 accent-cyan-300" />
                       <div className="min-w-0">
                         <h3 className="break-words text-sm font-bold text-slate-100">{application.company}</h3>
                         <p className="mt-0.5 break-words text-xs text-slate-400">{application.role}</p>
                       </div>
-                      <ActionForm action={restoreDeletedApplication.bind(null, application.id)}>
-                        <button className="recycle-restore shrink-0 px-3 py-2 text-xs font-bold transition">Restore</button>
-                      </ActionForm>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <ActionForm action={restoreDeletedApplication.bind(null, application.id)} className="[&[aria-busy=true]_button]:pointer-events-none [&[aria-busy=true]_button]:opacity-50">
+                          <button className="recycle-restore shrink-0 px-3 py-2 text-xs font-bold transition">Restore</button>
+                        </ActionForm>
+                        <ActionForm action={permanentlyDeleteApplication.bind(null, application.id)} className="[&[aria-busy=true]_button]:pointer-events-none [&[aria-busy=true]_button]:opacity-50">
+                          <button aria-label={`Permanently delete ${application.company} — ${application.role}`} title="Delete permanently" onClick={(event) => { if (!window.confirm(`Are you sure you want to permanently delete ${application.company} — ${application.role}? This cannot be undone.`)) event.preventDefault(); }} className="recycle-delete grid size-8 place-items-center text-lg font-bold transition"><span aria-hidden="true">×</span></button>
+                        </ActionForm>
+                      </div>
                     </article>
                   ))}
                 </div>
               )}
-              <p className="mt-5 border-t border-white/10 pt-4 text-xs leading-relaxed text-slate-400">Deleted applications and attachments are kept for 30 days. Older legacy entries may only restore basic details.</p>
+              <p className="mt-5 border-t border-white/10 pt-4 text-xs leading-relaxed text-slate-400">Deleted applications and attachments are kept for 30 days. Permanent deletion removes them immediately and cannot be undone. Documents in your library are kept. Older legacy entries may only restore basic details.</p>
             </section>,
             document.body,
           )

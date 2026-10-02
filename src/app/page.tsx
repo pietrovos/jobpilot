@@ -11,6 +11,9 @@ import {
   deleteApplicationFile,
   deleteEmailLog,
   deleteInterview,
+  emptyRecycleBin,
+  permanentlyDeleteApplication,
+  permanentlyDeleteApplications,
   moveApplicationNote,
   reorderApplications,
   refreshCompanyLogo,
@@ -252,6 +255,9 @@ export default async function Home({ searchParams }: HomeProps) {
                 role: application.role,
               }))}
               restoreDeletedApplication={restoreDeletedApplication}
+              permanentlyDeleteApplication={permanentlyDeleteApplication}
+              permanentlyDeleteApplications={permanentlyDeleteApplications}
+              emptyRecycleBin={emptyRecycleBin}
             />
           </div>
         </section>

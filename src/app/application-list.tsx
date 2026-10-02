@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore, useTransition } from "react";
+import { createContext, useContext, useEffect, useEffectEvent, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ApplicationStatus } from "@/generated/prisma/enums";
@@ -9,6 +9,7 @@ import { ActionForm, mutationFeedback, UnsavedChangesProvider, uploadError, useD
 import type { ApplicationDetail, ApplicationSummary } from "./application-types";
 import type { UserDocumentItem } from "./document-types";
 import { jobIdSource } from "@/lib/job-id";
+import { EmailLogSection, InterviewSection, NoteEditor } from "./application-workspaces";
 
 type DeleteTarget = {
   ids: string[];
@@ -17,7 +18,7 @@ type DeleteTarget = {
 
 type RankAnimation = { direction: "up" | "down"; status: ApplicationStatus };
 
-type DetailSection = "jobDescription" | "notes" | "files" | "emailLog" | "interviews" | "offer" | "history";
+type DetailSection = "additionalDetails" | "notes" | "files" | "emailLog" | "interviews" | "offer" | "history";
 const TimeZoneContext = createContext("UTC");
 const subscribeTimeZone = () => () => {};
 const browserTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
@@ -872,6 +873,7 @@ function ApplicationDetails({
   const [activeDetailSection, setActiveDetailSection] = useState<DetailSection | null>(null);
   const [keyboardNavigatingSections, setKeyboardNavigatingSections] = useState(false);
   const detailFieldsRef = useRef<HTMLDivElement>(null);
+  const descriptionRef = useRef<HTMLDivElement>(null);
   const returnFocusFieldRef = useRef<string | null>(null);
   const sectionGridRef = useRef<HTMLDivElement>(null);
   const backToDetailsRef = useRef<HTMLButtonElement>(null);
@@ -881,7 +883,7 @@ function ApplicationDetails({
   const [discardAction, setDiscardAction] = useState<(() => void) | null>(null);
   const modalTheme = modalStatusStyles[application.status];
   const detailSectionButtons: Array<{ id: DetailSection; label: string }> = [
-    { id: "jobDescription", label: "Job description" },
+    { id: "additionalDetails", label: "Additional details" },
     { id: "notes", label: "Notes" },
     { id: "files", label: "Files" },
     { id: "emailLog", label: "Email log" },
@@ -915,6 +917,25 @@ function ApplicationDetails({
     }
   }
 
+  const editDescriptionWithEnter = useEffectEvent((event: KeyboardEvent) => {
+    if (event.key !== "Enter" || event.repeat || event.altKey || event.ctrlKey || event.metaKey || activeDetailSection || editingField || confirmDiscard) return;
+    const description = descriptionRef.current;
+    if (!description) return;
+    const target = event.target;
+    if (target instanceof HTMLElement && (target.isContentEditable || target.closest("input, textarea, select"))) return;
+    if (target instanceof Element && description.contains(target) && target.closest("button, a")) return;
+    if (!description.matches(":hover") && !(target instanceof Node && description.contains(target))) return;
+    event.preventDefault();
+    event.stopPropagation();
+    requestDiscard(() => setEditingField("jobDescription"));
+  });
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => editDescriptionWithEnter(event);
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
+  }, []);
+
   function backToDetails() {
     requestDiscard(() => {
       returnFocusSectionRef.current = activeDetailSection;
@@ -945,7 +966,7 @@ function ApplicationDetails({
     <UnsavedChangesProvider onChange={(isDirty) => {
       hasUnsavedChangesRef.current = isDirty;
     }} onDiscardRequest={requestDiscard} onMutationSuccess={onDetailsChanged}>
-    <Dialog label={`${application.company} application details`} onClose={() => activeDetailSection ? backToDetails() : requestDiscard(onClose)} onEscape={handleEscape} onBack={handleBackspace} initialFocusSelector="[data-detail-section='jobDescription']" className={`details-overlay fixed inset-0 z-50 p-3 backdrop-blur-sm sm:p-5 ${modalTheme.overlay}`}>
+    <Dialog label={`${application.company} application details`} onClose={() => activeDetailSection ? backToDetails() : requestDiscard(onClose)} onEscape={handleEscape} onBack={handleBackspace} initialFocusSelector="[data-detail-section='additionalDetails']" className={`details-overlay fixed inset-0 z-50 p-3 backdrop-blur-sm sm:p-5 ${modalTheme.overlay}`}>
       <div data-details-scroll className={`${modalTheme.scrollbar} h-full w-full overscroll-contain overflow-y-auto rounded-[0.75rem] p-5 sm:p-7 ${withoutBorderClasses(modalTheme.shell)}`}>
         {!activeDetailSection ? (
           <div className="flex flex-col gap-3 border-b border-white/10 pb-4 sm:flex-row sm:items-start sm:justify-between">
@@ -955,6 +976,12 @@ function ApplicationDetails({
                 <div className="min-w-0">
                   <h2 className={`break-words text-3xl font-black ${textStatusStyles[application.status].title}`}>{application.company}</h2>
                   <p className={`break-words font-semibold ${textStatusStyles[application.status].role}`}>{application.role}</p>
+                  <div className="details-header-meta mt-3 flex flex-wrap items-start gap-x-6 gap-y-2">
+                    <InlineEditableDetail application={application} editing={editingField === "appliedAt"} theme={modalTheme} label="Applied at" name="appliedAt" type="datetime-local" value={`Applied ${formatDateTime(application.appliedAt, timeZone)}`} defaultValue={toDatetimeLocal(application.appliedAt)} hideLabel updateApplication={updateApplication} onEdit={() => requestDiscard(() => setEditingField("appliedAt"))} onDone={() => setEditingField(null)} />
+                    {application.salary?.trim() || editingField === "salary" ? (
+                      <InlineEditableDetail application={application} editing={editingField === "salary"} theme={modalTheme} label="Salary" name="salary" value={application.salary ?? ""} defaultValue={application.salary ?? ""} valueClassName={salaryRankStyles[application.status]} hideLabel updateApplication={updateApplication} onEdit={() => requestDiscard(() => setEditingField("salary"))} onDone={() => setEditingField(null)} />
+                    ) : null}
+                  </div>
                 </div>
               </div>
             </div>
@@ -980,10 +1007,10 @@ function ApplicationDetails({
         ) : null}
 
         {activeDetailSection ? (
-          <div className={activeDetailSection ? "" : "mt-5"}>
-            <div className="flex flex-col gap-3 border-b border-white/10 pb-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="detail-workspace">
+            <div className="detail-workspace-header flex flex-col gap-3 border-b border-white/10 pb-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className={`text-xs font-bold uppercase tracking-[0.2em] ${modalTheme.eyebrow}`}>Details area</p>
+                <p className={`text-xs font-bold uppercase tracking-[0.2em] ${modalTheme.eyebrow}`}>{application.company} · {application.role}</p>
                 <h3 className="mt-1 text-2xl font-black text-slate-100">{activeSectionLabel}</h3>
               </div>
               <button
@@ -995,12 +1022,16 @@ function ApplicationDetails({
                 Back to details
               </button>
             </div>
-            {activeDetailSection === "jobDescription" ? (
-              <InlineEditableDetail application={application} editing={editingField === "jobDescription"} theme={modalTheme} label="Job description" name="jobDescription" value={application.jobDescription || "No job description added"} defaultValue={application.jobDescription ?? ""} multiline hideLabel updateApplication={updateApplication} onEdit={() => requestDiscard(() => {
-                setEditingField("jobDescription");
-              })} onDone={() => {
-                setEditingField(null);
-              }} />
+            {activeDetailSection === "additionalDetails" ? (
+              <div className="mt-4 grid gap-x-8 sm:grid-cols-2">
+                {(["company", "role", "jobUrl", "jobId", "notes"] as const).map((name) => (
+                  <InlineEditableDetail key={name} application={application} editing={editingField === name} theme={modalTheme} label={{ company: "Company", role: "Role", jobUrl: "Job posting link", jobId: "Job ID", notes: "Application notes" }[name]} name={name} type={name === "jobUrl" ? "url" : "text"} multiline={name === "notes"} value={name === "jobId" ? formatJobId(application.jobId, application.jobUrl) : application[name] || "Not added"} defaultValue={application[name] ?? ""} updateApplication={updateApplication} onEdit={() => requestDiscard(() => setEditingField(name))} onDone={() => finishEditingField(name)} />
+                ))}
+                <Detail label="Last updated" value={formatDateTime(application.updatedAt, timeZone)} navigationId="updatedAt" theme={modalTheme} />
+                <InlineEditableDetail application={application} editing={editingField === "salary"} theme={modalTheme} label="Salary" name="salary" value={application.salary || "Not disclosed"} defaultValue={application.salary ?? ""} valueClassName={salaryRankStyles[application.status]} updateApplication={updateApplication} onEdit={() => requestDiscard(() => setEditingField("salary"))} onDone={() => finishEditingField("salary")} />
+                <InlineEditableDetail application={application} editing={editingField === "location"} theme={modalTheme} label="Location" name="location" value={application.location || "Missing"} defaultValue={application.location ?? ""} updateApplication={updateApplication} onEdit={() => requestDiscard(() => setEditingField("location"))} onDone={() => finishEditingField("location")} />
+                <InlineEditableDetail application={application} editing={editingField === "jobPostedAt"} theme={modalTheme} label="Posting date" name="jobPostedAt" value={application.jobPostedAt || "Unknown"} defaultValue={application.jobPostedAt ?? ""} updateApplication={updateApplication} onEdit={() => requestDiscard(() => setEditingField("jobPostedAt"))} onDone={() => finishEditingField("jobPostedAt")} />
+              </div>
             ) : null}
             {activeDetailSection === "notes" ? (
               <ApplicationNotesSection
@@ -1012,6 +1043,7 @@ function ApplicationDetails({
                 moveApplicationNote={moveApplicationNote}
                 theme={modalTheme}
                 updateApplicationNote={updateApplicationNote}
+                onNotesChanged={onDetailsChanged}
               />
             ) : null}
             {activeDetailSection === "files" ? (
@@ -1025,10 +1057,10 @@ function ApplicationDetails({
               />
             ) : null}
             {activeDetailSection === "emailLog" ? (
-              <EmailLogSection application={application} addEmailLog={addEmailLog} deleteEmailLog={deleteEmailLog} updateEmailLog={updateEmailLog} theme={modalTheme} />
+              <EmailLogSection application={application} addEmailLog={addEmailLog} deleteEmailLog={deleteEmailLog} updateEmailLog={updateEmailLog} theme={modalTheme} timeZone={timeZone} />
             ) : null}
             {activeDetailSection === "interviews" ? (
-              <InterviewSection application={application} addInterview={addInterview} deleteInterview={deleteInterview} updateInterview={updateInterview} theme={modalTheme} />
+              <InterviewSection application={application} addInterview={addInterview} deleteInterview={deleteInterview} updateInterview={updateInterview} theme={modalTheme} timeZone={timeZone} />
             ) : null}
             {activeDetailSection === "offer" ? (
               <OfferDetailsSection application={application} saveOfferDetails={saveOfferDetails} theme={modalTheme} />
@@ -1037,15 +1069,21 @@ function ApplicationDetails({
           </div>
         ) : (
           <>
-          <div className="mt-5 grid items-stretch gap-x-8 gap-y-1 sm:grid-cols-2">
-            <div ref={detailFieldsRef} className="min-w-0" onKeyDown={(event) => {
+          <div className="mt-5 grid items-start gap-x-8 gap-y-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,0.75fr)]">
+            <div ref={detailFieldsRef} className="detail-workspace min-w-0" onKeyDown={(event) => {
+              if (event.target instanceof HTMLElement && event.key === "ArrowRight" && !event.target.closest("input, textarea, select, [contenteditable='true']")) {
+                event.preventDefault();
+                event.stopPropagation();
+                setKeyboardNavigatingSections(true);
+                sectionGridRef.current?.querySelector<HTMLButtonElement>('[data-detail-section="additionalDetails"]')?.focus();
+                return;
+              }
               if (!(event.target instanceof HTMLElement) || !event.target.matches("[data-detail-field]")) return;
               const fields = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("[data-detail-field]"));
               const index = fields.indexOf(event.target);
-              if (event.key === "ArrowRight") {
+              if (event.key === "Enter") {
                 event.preventDefault();
-                setKeyboardNavigatingSections(true);
-                sectionGridRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+                requestDiscard(() => setEditingField("jobDescription"));
               } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
                 const next = index + (event.key === "ArrowDown" ? 1 : -1);
                 if (next < 0 || next >= fields.length) return;
@@ -1053,28 +1091,11 @@ function ApplicationDetails({
                 fields[next].focus();
               }
             }}>
-              {(["company", "role", "jobUrl", "jobId", "notes"] as const).map((name) => (
-                <InlineEditableDetail key={name} application={application} editing={editingField === name} theme={modalTheme} label={{ company: "Company", role: "Role", jobUrl: "Job posting link", jobId: "Job ID", notes: "Application notes" }[name]} name={name} type={name === "jobUrl" ? "url" : "text"} multiline={name === "notes"} value={name === "jobId" ? formatJobId(application.jobId, application.jobUrl) : application[name] || "Not added"} defaultValue={application[name] ?? ""} updateApplication={updateApplication} onEdit={() => requestDiscard(() => setEditingField(name))} onDone={() => finishEditingField(name)} />
-              ))}
-              <InlineEditableDetail
-                application={application}
-                editing={editingField === "appliedAt"}
-                theme={modalTheme}
-                label="Applied at"
-                name="appliedAt"
-                type="datetime-local"
-                value={formatDateTime(application.appliedAt, timeZone)}
-                defaultValue={toDatetimeLocal(application.appliedAt)}
-                updateApplication={updateApplication}
-                onEdit={() => requestDiscard(() => setEditingField("appliedAt"))}
-                onDone={() => finishEditingField("appliedAt")}
-              />
-              <Detail label="Last updated" value={formatDateTime(application.updatedAt, timeZone)} navigationId="updatedAt" theme={modalTheme} />
-              <InlineEditableDetail application={application} editing={editingField === "salary"} theme={modalTheme} label="Salary" name="salary" value={application.salary || "N/A"} defaultValue={application.salary ?? ""} valueClassName={salaryRankStyles[application.status]} updateApplication={updateApplication} onEdit={() => requestDiscard(() => setEditingField("salary"))} onDone={() => finishEditingField("salary")} />
-              <InlineEditableDetail application={application} editing={editingField === "location"} theme={modalTheme} label="Location" name="location" value={application.location || "Missing"} defaultValue={application.location ?? ""} updateApplication={updateApplication} onEdit={() => requestDiscard(() => setEditingField("location"))} onDone={() => finishEditingField("location")} />
-              <InlineEditableDetail application={application} editing={editingField === "jobPostedAt"} theme={modalTheme} label="Posting date" name="jobPostedAt" value={application.jobPostedAt || "Unknown"} defaultValue={application.jobPostedAt ?? ""} updateApplication={updateApplication} onEdit={() => requestDiscard(() => setEditingField("jobPostedAt"))} onDone={() => finishEditingField("jobPostedAt")} />
+              <div ref={descriptionRef} data-detail-field="jobDescription" tabIndex={0} role="group" aria-label="Job description" aria-keyshortcuts="Enter">
+                <InlineEditableDetail application={application} editing={editingField === "jobDescription"} theme={modalTheme} label="Job description" name="jobDescription" value={application.jobDescription || "No job description added"} defaultValue={application.jobDescription ?? ""} multiline hideLabel updateApplication={updateApplication} onEdit={() => requestDiscard(() => setEditingField("jobDescription"))} onDone={() => finishEditingField("jobDescription")} />
+              </div>
             </div>
-            <div className="min-w-0 border-t border-white/10 pt-4 sm:border-t-0 sm:pt-0">
+            <div className="min-w-0 border-t border-white/10 pt-4 lg:border-t-0 lg:pt-0">
               <div ref={sectionGridRef} className={`detail-section-grid grid grid-cols-3 gap-2 ${keyboardNavigatingSections ? "keyboard-navigating" : ""}`} onPointerMove={(event) => {
                 if (event.pointerType === "mouse") setKeyboardNavigatingSections(false);
               }} onKeyDown={(event) => {
@@ -1084,7 +1105,7 @@ function ApplicationDetails({
                 if (event.key === "ArrowLeft" && index % 3 === 0) {
                   event.preventDefault();
                   setKeyboardNavigatingSections(true);
-                  detailFieldsRef.current?.querySelector<HTMLElement>('[data-detail-field="company"]')?.focus();
+                  detailFieldsRef.current?.querySelector<HTMLElement>('[data-detail-field="jobDescription"]')?.focus();
                   return;
                 }
                 const offsets: Record<string, number> = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 3, ArrowUp: -3 };
@@ -1153,6 +1174,16 @@ function CompanyLogo({ applicationId, card = false, large = false }: { applicati
   );
 }
 
+function DetailEmptyState({ icon, title, description }: { icon: "file" | "folder" | "mail" | "calendar-plus"; title: string; description: string }) {
+  return (
+    <div className="detail-empty-state">
+      <span className="detail-empty-icon"><DirectoryIcon name={icon} /></span>
+      <p className="text-sm font-semibold text-slate-200">{title}</p>
+      <p className="mt-1 max-w-sm text-sm leading-6 text-slate-400">{description}</p>
+    </div>
+  );
+}
+
 function ApplicationNotesSection({
   application,
   addApplicationNote,
@@ -1162,6 +1193,7 @@ function ApplicationNotesSection({
   moveApplicationNote,
   theme,
   updateApplicationNote,
+  onNotesChanged,
 }: {
   application: ApplicationDetail;
   addApplicationNote: (applicationId: string, formData: FormData) => unknown | Promise<unknown>;
@@ -1171,135 +1203,208 @@ function ApplicationNotesSection({
   moveApplicationNote: (noteId: string, folderId: string) => unknown | Promise<unknown>;
   theme: { timeline: string; timelineItem: string; eyebrow: string; button: string; fieldInput: string };
   updateApplicationNote: (noteId: string, formData: FormData) => unknown | Promise<unknown>;
+  onNotesChanged: () => void;
 }) {
   const timeZone = useContext(TimeZoneContext);
   const requestDiscard = useDiscardChanges();
   const [isAddingNote, setIsAddingNote] = useState(false);
   const [isAddingFolder, setIsAddingFolder] = useState(false);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
-  const [openFolderId, setOpenFolderId] = useState<string | null>(null);
+  const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(new Set());
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [isNoteSidebarOpen, setIsNoteSidebarOpen] = useState(true);
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [folderDropTargetId, setFolderDropTargetId] = useState<string | null>(null);
-  const selectedNote = application.noteEntries.find((note) => note.id === selectedNoteId) ?? null;
-  const rootNotes = application.noteEntries.filter((note) => note.folderId === null);
+  const [draggedNoteId, setDraggedNoteId] = useState<string | null>(null);
+  const [isMoving, startMove] = useTransition();
+  const [moveError, setMoveError] = useState("");
+  const [noteQuery, setNoteQuery] = useState("");
+  const selectedNote = application.noteEntries.find((note) => note.id === selectedNoteId) ?? application.noteEntries[0] ?? null;
+  const editingNote = application.noteEntries.find((note) => note.id === editingNoteId) ?? null;
+  const matchesNote = (note: ApplicationDetail["noteEntries"][number]) => `${note.title} ${note.body}`.toLowerCase().includes(noteQuery.toLowerCase());
+  const rootNotes = application.noteEntries.filter((note) => note.folderId === null && matchesNote(note));
 
   function toggleFolder(folderId: string) {
     requestDiscard(() => {
-      setOpenFolderId((current) => (current === folderId ? null : folderId));
+      setSelectedFolderId(folderId);
+      setExpandedFolderIds((current) => {
+        const next = new Set(current);
+        if (next.has(folderId)) next.delete(folderId);
+        else next.add(folderId);
+        return next;
+      });
+    });
+  }
+
+  function isNoteDrag(event: React.DragEvent) {
+    return draggedNoteId !== null || Array.from(event.dataTransfer.types).includes("application/x-jobpilot-note");
+  }
+
+  function moveNote(noteId: string, folderId: string) {
+    if (isMoving) return;
+    requestDiscard(() => {
+      setEditingNoteId(null);
+      setIsAddingNote(false);
+      setMoveError("");
+      startMove(async () => {
+        try {
+          const result = mutationFeedback(await moveApplicationNote(noteId, folderId));
+          if (!result.success) { setMoveError(result.message); return; }
+          if (folderId) setExpandedFolderIds((current) => new Set([...current, folderId]));
+          setSelectedFolderId(folderId || null);
+          setSelectedNoteId(noteId);
+          onNotesChanged();
+        } catch {
+          setMoveError("Could not move the note. Please try again.");
+        }
+      });
+    });
+  }
+
+  function dropHandlers(folderId: string) {
+    return {
+      onDragOver: (event: React.DragEvent) => {
+        if (!isNoteDrag(event)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        event.dataTransfer.dropEffect = "move";
+        setFolderDropTargetId(folderId);
+      },
+      onDragLeave: (event: React.DragEvent) => {
+        if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
+        setFolderDropTargetId(null);
+      },
+      onDrop: (event: React.DragEvent) => {
+        if (!isNoteDrag(event)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const noteId = event.dataTransfer.getData("application/x-jobpilot-note") || draggedNoteId;
+        setDraggedNoteId(null);
+        setFolderDropTargetId(null);
+        if (noteId) moveNote(noteId, folderId);
+      },
+    };
+  }
+
+  function startNoteDrag(event: React.DragEvent, noteId: string) {
+    event.stopPropagation();
+    setDraggedNoteId(noteId);
+    event.dataTransfer.setData("application/x-jobpilot-note", noteId);
+    event.dataTransfer.setData("text/plain", noteId);
+    event.dataTransfer.effectAllowed = "move";
+  }
+
+  function selectNote(noteId: string) {
+    requestDiscard(() => {
+      setSelectedNoteId(noteId);
+      setSelectedFolderId(application.noteEntries.find((note) => note.id === noteId)?.folderId ?? null);
       setEditingNoteId(null);
       setIsAddingNote(false);
     });
   }
 
-  function isNoteDrag(event: React.DragEvent) {
-    return Array.from(event.dataTransfer.types).includes("application/x-jobpilot-note");
-  }
-
   return (
-    <section className={`detail-module mt-3 border ${theme.timeline}`}>
-      <div className="detail-module-rail" />
-      <div className="relative p-4">
-        <div className="flex items-center justify-between border-b border-white/10 pb-3">
-          <div className="flex min-w-0 items-center gap-1">
-            {openFolderId ? (
-              <button type="button" className="grid size-9 place-items-center rounded-lg text-slate-400 transition hover:bg-white/10 hover:text-white" aria-label="Back to notes" title="Back" onClick={() => setOpenFolderId(null)}>
-                <DirectoryIcon name="back" />
-              </button>
-            ) : null}
+    <section className="workspace-shell notes-workspace">
+      <div>
+        <div className="workspace-topbar">
+          <div className="flex min-w-0 items-center gap-2">
+            <div><h4>Notebook</h4><p>{application.noteEntries.length} notes · {application.noteFolders.length} folders</p></div>
           </div>
-          <div className="flex flex-1 items-center gap-2">
-            <button type="button" className="grid size-11 place-items-center rounded-lg text-slate-400 transition hover:bg-white/10 hover:text-white [&>svg]:size-6" aria-label="New folder" title="New folder" onClick={() => requestDiscard(() => { setIsAddingFolder((current) => !current); setIsAddingNote(false); })}>
-              <DirectoryIcon name="folder-plus" />
-            </button>
-            <button type="button" className={`grid size-11 place-items-center rounded-lg [&>svg]:size-6 ${theme.button}`} aria-label="New note" title="New note" onClick={() => requestDiscard(() => { setIsAddingNote((current) => !current); setIsAddingFolder(false); })}>
-              <DirectoryIcon name="file-plus" />
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" className={`workspace-button workspace-primary ${theme.button}`} aria-label="New note" title="New note" onClick={() => requestDiscard(() => { setIsAddingNote(true); setEditingNoteId(null); setIsAddingFolder(false); })}>
+              <span>+ New note</span>
             </button>
           </div>
         </div>
-        {isAddingFolder ? (
-          <ActionForm action={addApplicationNoteFolder.bind(null, application.id)} onSuccess={() => setIsAddingFolder(false)} className="mt-3 flex gap-2 border-b border-white/10 pb-3">
-            <input name="name" required autoFocus aria-label="Folder name" placeholder="Folder name" className={`min-w-0 flex-1 px-3 py-2 text-sm ${theme.fieldInput}`} />
-            <div className="flex gap-2">
-              <DiscardButton onDiscard={() => setIsAddingFolder(false)} />
-              <button className={`grid size-9 place-items-center ${theme.button}`} aria-label="Create folder" title="Create folder"><DirectoryIcon name="check" /></button>
-            </div>
-          </ActionForm>
-        ) : null}
-        {isAddingNote ? (
-          <ActionForm
-            action={addApplicationNote.bind(null, application.id)} onSuccess={() => setIsAddingNote(false)}
-            className="mt-3 overflow-hidden border border-white/10 bg-white/[0.035]"
-          >
-            <input name="folderId" type="hidden" value={openFolderId ?? ""} />
-            <input name="title" required autoFocus aria-label="Note title" placeholder="Untitled note" className="w-full bg-transparent px-4 py-3 text-base font-bold text-slate-100 outline-none placeholder:text-slate-500" />
-            <textarea name="body" aria-label="Note body" placeholder="Write a note..." rows={5} required className="w-full resize-none border-t border-white/10 bg-transparent px-4 py-3 text-sm leading-7 text-slate-200 outline-none placeholder:text-slate-500" />
-            <div className="flex items-center justify-between border-t border-white/10 px-3 py-2">
-              <DiscardButton onDiscard={() => setIsAddingNote(false)} />
-              <button className={`grid size-9 place-items-center ${theme.button}`} aria-label="Save note" title="Save note"><DirectoryIcon name="check" /></button>
-            </div>
-          </ActionForm>
-        ) : null}
 
-        <div className={`mt-4 grid gap-4 ${isNoteSidebarOpen ? "grid-cols-1 xl:grid-cols-[minmax(15rem,0.4fr)_minmax(0,1fr)]" : "grid-cols-[2.5rem_minmax(0,1fr)]"}`}>
-          <div className="min-w-0">
-            <button type="button" className={`grid size-10 place-items-center border transition ${isNoteSidebarOpen ? "w-full border-white/10 text-slate-300 hover:bg-white/[0.05]" : "border-white/10 text-slate-400 hover:border-sky-300/45 hover:text-sky-200"}`} aria-expanded={isNoteSidebarOpen} aria-label={isNoteSidebarOpen ? "Collapse notes sidebar" : "Expand notes sidebar"} title={isNoteSidebarOpen ? "Collapse notes sidebar" : "Expand notes sidebar"} onClick={() => setIsNoteSidebarOpen((current) => !current)}>
-              <DirectoryIcon name={isNoteSidebarOpen ? "fullscreen" : "menu"} />
+        {isMoving ? <p role="status" className="mt-3 text-sm text-sky-200">Moving note…</p> : null}
+        {moveError ? <p role="alert" className="mt-3 text-sm text-rose-200">{moveError}</p> : null}
+        <div className={`workspace-split ${isNoteSidebarOpen ? "" : "workspace-sidebar-collapsed"}`}>
+          <div className="workspace-sidebar">
+            <div className="flex items-center justify-between gap-2">
+            <button type="button" className="workspace-button border-0" aria-expanded={isNoteSidebarOpen} aria-label={isNoteSidebarOpen ? "Collapse notes sidebar" : "Expand notes sidebar"} title={isNoteSidebarOpen ? "Collapse notes sidebar" : "Expand notes sidebar"} onClick={() => setIsNoteSidebarOpen((current) => !current)}>
+              <span className="flex items-center gap-2"><DirectoryIcon name="menu" />{isNoteSidebarOpen ? <span className="text-xs font-semibold">Notes & folders</span> : null}</span>
             </button>
-            {isNoteSidebarOpen ? <div className="mt-3">
-            <div className="grid gap-2">
+            {isNoteSidebarOpen ? <button type="button" className="workspace-icon-button" aria-label="New folder" title="New folder" onClick={() => requestDiscard(() => { setIsAddingFolder((current) => !current); setIsAddingNote(false); })}><DirectoryIcon name="folder-plus" /></button> : null}
+            </div>
+            {isNoteSidebarOpen ? <>
+            <input type="search" aria-label="Search notes" placeholder="Find a note…" value={noteQuery} onChange={(event) => setNoteQuery(event.target.value)} className="workspace-search mt-3" />
+            {isAddingFolder ? <ActionForm action={addApplicationNoteFolder.bind(null, application.id)} onSuccess={() => setIsAddingFolder(false)} className="workspace-folder-form mt-3">
+              <input name="name" required autoFocus aria-label="Folder name" placeholder="Folder name" />
+              <div className="flex justify-end gap-2"><DiscardButton onDiscard={() => setIsAddingFolder(false)} /><button className={`workspace-button ${theme.button}`} aria-label="Create folder">Create</button></div>
+            </ActionForm> : null}
+            <div className="notes-explorer mt-3 status-graph-scroll" onDragEnd={() => { setDraggedNoteId(null); setFolderDropTargetId(null); }}>
+            <button type="button" className={`notes-tree-root ${folderDropTargetId === "" ? "notes-drop-target" : ""}`} {...dropHandlers("")} onClick={() => setSelectedFolderId(null)} aria-label="Notes root — drop notes here to move out of folders">
+              <DirectoryIcon name="folder" /><span>Notes</span><span className="ml-auto text-xs text-slate-500">{application.noteEntries.length}</span>
+            </button>
+            <ul role="tree" aria-label="Notes explorer" className="notes-tree" onKeyDown={(event) => {
+              if (!(event.target instanceof HTMLElement) || event.target.getAttribute("role") !== "treeitem") return;
+              const items = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="treeitem"]'));
+              const index = items.indexOf(event.target as HTMLButtonElement);
+              const folderId = event.target.dataset.folderId;
+              const parentFolderId = event.target.dataset.parentFolder;
+              if (event.key === "ArrowRight" && folderId && !expandedFolderIds.has(folderId)) {
+                event.preventDefault();
+                setExpandedFolderIds((current) => new Set([...current, folderId]));
+              } else if (event.key === "ArrowLeft") {
+                event.preventDefault();
+                if (folderId && expandedFolderIds.has(folderId)) setExpandedFolderIds((current) => { const next = new Set(current); next.delete(folderId); return next; });
+                else if (parentFolderId) items.find((item) => item.dataset.folderId === parentFolderId)?.focus();
+              } else {
+                const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : event.key === "ArrowDown" || event.key === "ArrowRight" ? index + 1 : event.key === "ArrowUp" ? index - 1 : -1;
+                if (next >= 0 && next < items.length) { event.preventDefault(); items[next].focus(); }
+              }
+            }}>
               {application.noteFolders.map((folder) => {
-                const isOpen = openFolderId === folder.id;
-                const notes = application.noteEntries.filter((note) => note.folderId === folder.id);
+                const isOpen = expandedFolderIds.has(folder.id) || noteQuery.length > 0;
+                const notes = application.noteEntries.filter((note) => note.folderId === folder.id && (folder.name.toLowerCase().includes(noteQuery.toLowerCase()) || matchesNote(note))).sort((a, b) => a.title.localeCompare(b.title));
 
                 return (
-                  <div
+                  <li role="none"
                     key={folder.id}
-                    className={`border transition ${folderDropTargetId === folder.id ? "border-sky-300 bg-sky-400/10" : "border-white/10"}`}
-                    onDragOver={(event) => {
-                      if (!isNoteDrag(event)) return;
-                      event.preventDefault();
-                      setFolderDropTargetId(folder.id);
-                    }}
-                    onDragLeave={() => setFolderDropTargetId(null)}
-                    onDrop={(event) => {
-                      event.preventDefault();
-                      const noteId = event.dataTransfer.getData("application/x-jobpilot-note");
-                      setFolderDropTargetId(null);
-                      if (noteId) void moveApplicationNote(noteId, folder.id);
-                    }}
+                    data-note-folder={folder.id}
+                    {...dropHandlers(folder.id)}
                   >
-                    <div className="flex items-center">
-                      <button type="button" className="flex min-w-0 flex-1 items-center gap-3 px-3 py-3 text-left hover:bg-white/[0.05]" aria-expanded={isOpen} onClick={() => toggleFolder(folder.id)}>
-                        <span className={`grid size-9 shrink-0 place-items-center ${theme.eyebrow}`}><DirectoryIcon name="folder" /></span>
-                        <span className="truncate text-sm font-semibold text-slate-200">{folder.name}</span>
+                    <div className={`notes-tree-row ${folderDropTargetId === folder.id ? "notes-drop-target" : ""}`}>
+                      <button type="button" role="treeitem" data-folder-id={folder.id} aria-level={1} aria-selected={selectedFolderId === folder.id && !selectedNoteId} className="notes-tree-label" aria-expanded={isOpen} onClick={() => toggleFolder(folder.id)}>
+                        <span aria-hidden="true" className="notes-tree-chevron">{isOpen ? "⌄" : "›"}</span>
+                        <span className={theme.eyebrow}><DirectoryIcon name="folder" /></span>
+                        <span className="truncate text-sm text-slate-200">{folder.name}</span>
                         <span className="ml-auto text-xs text-slate-500">{notes.length}</span>
                       </button>
-                      <button type="button" className="mr-2 grid size-8 place-items-center text-slate-500 transition hover:bg-rose-400/10 hover:text-rose-300" aria-label={`Delete ${folder.name}`} title="Delete folder" onClick={() => { void deleteApplicationNoteFolder(folder.id); if (isOpen) setOpenFolderId(null); }}><DirectoryIcon name="trash" /></button>
+                      <ActionForm action={deleteApplicationNoteFolder.bind(null, folder.id)} onSuccess={() => { if (selectedFolderId === folder.id) setSelectedFolderId(null); }}><button className="notes-tree-action" aria-label={`Delete ${folder.name}`} title="Delete folder"><DirectoryIcon name="trash" /></button></ActionForm>
                     </div>
                     {isOpen ? (
-                      <div className="ml-5 border-l border-white/10 pl-3">
-                        <NoteDirectory notes={notes} editingNoteId={editingNoteId} selectedNoteId={selectedNoteId} setEditingNoteId={setEditingNoteId} setSelectedNoteId={setSelectedNoteId} deleteApplicationNote={deleteApplicationNote} updateApplicationNote={updateApplicationNote} theme={theme} />
-                      </div>
+                      <ul role="group" className="notes-tree-children">
+                        <NoteDirectory notes={notes} selectedNoteId={selectedNoteId} onSelect={selectNote} onEdit={(id) => requestDiscard(() => { setSelectedNoteId(id); setEditingNoteId(id); })} onDragStart={startNoteDrag} deleteApplicationNote={deleteApplicationNote} />
+                        {notes.length === 0 ? <li role="none" className="px-3 py-2 text-xs text-slate-500">Empty folder · drop a note here</li> : null}
+                      </ul>
                     ) : null}
-                  </div>
+                  </li>
                 );
               })}
-            </div>
-            <div className="mt-4">
-              <NoteDirectory notes={rootNotes} editingNoteId={editingNoteId} selectedNoteId={selectedNoteId} setEditingNoteId={setEditingNoteId} setSelectedNoteId={setSelectedNoteId} deleteApplicationNote={deleteApplicationNote} updateApplicationNote={updateApplicationNote} theme={theme} />
-            </div>
-            </div> : null}
+              <NoteDirectory notes={[...rootNotes].sort((a, b) => a.title.localeCompare(b.title))} selectedNoteId={selectedNoteId} onSelect={selectNote} onEdit={(id) => requestDiscard(() => { setSelectedNoteId(id); setEditingNoteId(id); })} onDragStart={startNoteDrag} deleteApplicationNote={deleteApplicationNote} />
+            </ul>
+            <div className={`notes-root-drop ${folderDropTargetId === "" ? "notes-drop-target" : ""}`} {...dropHandlers("")}>Drop here to move to Notes root</div>
+            </div></> : null}
           </div>
-          <aside className="min-h-48 border border-white/10 bg-white/[0.035] p-4 xl:sticky xl:top-4">
-            {selectedNote ? (
+          <aside className="workspace-main note-preview">
+            {isAddingNote || editingNote ? (
+              <NoteEditor key={editingNote?.id ?? "new"} note={editingNote ?? undefined} folderId={editingNote?.folderId ?? selectedFolderId ?? ""} folderName={application.noteFolders.find((folder) => folder.id === (editingNote?.folderId ?? selectedFolderId))?.name ?? "Root"} action={editingNote ? updateApplicationNote.bind(null, editingNote.id) : addApplicationNote.bind(null, application.id)} onSuccess={() => { setIsAddingNote(false); setEditingNoteId(null); if (isAddingNote) setSelectedNoteId(null); }} onCancel={() => { setIsAddingNote(false); setEditingNoteId(null); }} theme={theme} />
+            ) : selectedNote ? (
               <div>
-                <p className={`text-xs font-bold uppercase tracking-[0.18em] ${theme.eyebrow}`}>Note preview</p>
-                <h4 className="mt-2 break-words text-lg font-black text-slate-100">{selectedNote.title}</h4>
-                 <p className="mt-1 text-xs text-slate-500">Updated {formatDateTime(selectedNote.updatedAt, timeZone)}</p>
-                <p className="mt-4 whitespace-pre-wrap break-words text-sm leading-7 text-slate-300">{selectedNote.body}</p>
+                <div className="workspace-pane-bar"><span className="workspace-breadcrumb">Notes / {application.noteFolders.find((folder) => folder.id === selectedNote.folderId)?.name ?? "Root"}</span><button type="button" className="workspace-button" onClick={() => requestDiscard(() => setEditingNoteId(selectedNote.id))}>Edit note</button></div>
+                <div className="workspace-note-page"><h4 className="workspace-reading-title">{selectedNote.title}</h4><p className="mt-2 text-xs text-slate-500">Updated {formatDateTime(selectedNote.updatedAt, timeZone)}</p><p className="workspace-prose mt-7">{selectedNote.body}</p></div>
+                <div className="workspace-editor-footer">
+                  <label className="flex min-w-0 items-center gap-2 text-xs text-slate-400">Move to
+                    <select aria-label="Move note to folder" disabled={isMoving} value={selectedNote.folderId ?? ""} onChange={(event) => moveNote(selectedNote.id, event.target.value)} className={`min-w-0 max-w-48 rounded-lg border border-white/10 px-2 py-2 text-xs ${theme.fieldInput}`}>
+                      <option value="">Notes root</option>
+                      {application.noteFolders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
+                    </select>
+                  </label>
+                </div>
               </div>
-            ) : <p className="text-sm text-slate-500">Select a note to preview it here.</p>}
+            ) : <div className="workspace-blank"><span aria-hidden="true" className="workspace-blank-symbol">✎</span><h4>Your notebook is empty</h4><p>Create a note for your company research, interview questions, or follow-ups.</p><button type="button" className={`workspace-button workspace-primary ${theme.button}`} onClick={() => setIsAddingNote(true)}>Create your first note</button></div>}
           </aside>
         </div>
       </div>
@@ -1307,37 +1412,27 @@ function ApplicationNotesSection({
   );
 }
 
-function NoteDirectory({ notes, editingNoteId, selectedNoteId, setEditingNoteId, setSelectedNoteId, deleteApplicationNote, updateApplicationNote, theme }: {
+function NoteDirectory({ notes, selectedNoteId, onSelect, onEdit, onDragStart, deleteApplicationNote }: {
   notes: ApplicationDetail["noteEntries"];
-  editingNoteId: string | null;
   selectedNoteId: string | null;
-  setEditingNoteId: (noteId: string | null) => void;
-  setSelectedNoteId: (noteId: string | null) => void;
+  onSelect: (noteId: string) => void;
+  onEdit: (noteId: string) => void;
+  onDragStart: (event: React.DragEvent, noteId: string) => void;
   deleteApplicationNote: (noteId: string) => unknown | Promise<unknown>;
-  updateApplicationNote: (noteId: string, formData: FormData) => unknown | Promise<unknown>;
-  theme: { timelineItem: string; eyebrow: string; button: string; fieldInput: string };
 }) {
-  const timeZone = useContext(TimeZoneContext);
-  const requestDiscard = useDiscardChanges();
   return (
-    <div className="grid divide-y divide-white/10">
-      {notes.map((note) => editingNoteId === note.id ? (
-        <ActionForm key={note.id} action={updateApplicationNote.bind(null, note.id)} onSuccess={() => setEditingNoteId(null)} className="grid gap-2 py-3">
-          <input name="folderId" type="hidden" value={note.folderId ?? ""} />
-          <input name="title" aria-label="Note title" autoFocus required defaultValue={note.title} className={`px-3 py-2 text-sm ${theme.fieldInput}`} />
-          <textarea name="body" aria-label="Note body" required rows={5} defaultValue={note.body} className={`min-h-32 px-3 py-2 text-sm ${theme.fieldInput}`} />
-          <div className="flex justify-end gap-1"><DiscardButton onDiscard={() => setEditingNoteId(null)} /><button className={`grid size-9 place-items-center ${theme.button}`} aria-label="Save note" title="Save note"><DirectoryIcon name="check" /></button></div>
-        </ActionForm>
-      ) : (
-        <article key={note.id} draggable className={`group flex min-w-0 items-center gap-3 px-3 py-3 transition ${selectedNoteId === note.id ? "bg-sky-400/10" : "hover:bg-white/[0.05]"}`} onDragStart={(event) => { event.stopPropagation(); event.dataTransfer.setData("application/x-jobpilot-note", note.id); event.dataTransfer.effectAllowed = "move"; }}>
-          <button type="button" className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => requestDiscard(() => setSelectedNoteId(note.id))} onDoubleClick={() => requestDiscard(() => setEditingNoteId(note.id))} onKeyDown={(event) => { if (event.key === "Enter") requestDiscard(() => setSelectedNoteId(note.id)); }} title={`Preview ${note.title}`}>
-            <span className="grid size-8 shrink-0 place-items-center text-slate-400"><DirectoryIcon name="file" /></span>
-             <span className="min-w-0"><span className="block truncate text-sm font-semibold text-slate-200">{note.title}</span><span className="mt-0.5 block truncate text-xs text-slate-500">{formatDateTime(note.updatedAt, timeZone)}</span></span>
+    <>
+      {notes.map((note) => (
+        <li role="none" key={note.id} data-note-id={note.id} className={`notes-tree-row ${selectedNoteId === note.id ? "notes-tree-selected" : ""}`}>
+          <button type="button" role="treeitem" aria-level={note.folderId ? 2 : 1} aria-selected={selectedNoteId === note.id} data-parent-folder={note.folderId ?? undefined} draggable onDragStart={(event) => onDragStart(event, note.id)} className="notes-tree-label notes-tree-note" onClick={() => onSelect(note.id)} onDoubleClick={() => onEdit(note.id)} title={note.title}>
+            <span className="text-slate-400"><DirectoryIcon name="file" /></span>
+            <span className="truncate text-sm text-slate-200">{note.title}</span>
           </button>
-          <ActionForm action={deleteApplicationNote.bind(null, note.id)}><button className="grid size-8 place-items-center text-slate-500 opacity-0 transition hover:bg-rose-400/10 hover:text-rose-300 group-hover:opacity-100 focus:opacity-100" aria-label="Delete note" title="Delete note"><DirectoryIcon name="trash" /></button></ActionForm>
-        </article>
+          <button type="button" className="notes-tree-action" aria-label={`Edit ${note.title}`} title="Edit note" onClick={() => onEdit(note.id)}>✎</button>
+          <ActionForm action={deleteApplicationNote.bind(null, note.id)}><button className="notes-tree-action" aria-label="Delete note" title="Delete note"><DirectoryIcon name="trash" /></button></ActionForm>
+        </li>
       ))}
-    </div>
+    </>
   );
 }
 
@@ -1421,15 +1516,16 @@ function ApplicationFiles({
     <section className={`detail-module mt-3 border ${theme.timeline}`}>
       <div className="detail-module-rail" />
       <div className="p-4">
-        <div className="min-w-0">
-          <h3 className={`font-mono text-xs font-bold uppercase tracking-[0.2em] ${theme.eyebrow}`}>Files</h3>
-          <p className="mt-2 text-sm font-semibold text-slate-300">Upload files or attach documents from your library.</p>
+        <div className="detail-toolbar">
+          <div><h3 className="text-sm font-semibold text-slate-100">Application documents</h3>
+          <p className="mt-1 text-sm text-slate-400">Resumes, cover letters, and supporting files.</p></div>
+          <span className="detail-count">{application.files.length} attached</span>
         </div>
 
-        <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(17rem,0.85fr)_minmax(0,1.15fr)] lg:items-start">
-          <ActionForm action={uploadApplicationFile.bind(null, application.id)} onSuccess={() => { fileStoreRef.current = []; setSelectedFiles([]); if (inputRef.current) inputRef.current.value = ""; }} className="grid gap-3">
+        <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(15rem,0.8fr)_minmax(0,1.2fr)] lg:items-start">
+          <ActionForm action={uploadApplicationFile.bind(null, application.id)} onSuccess={() => { fileStoreRef.current = []; setSelectedFiles([]); if (inputRef.current) inputRef.current.value = ""; }} className="detail-surface grid gap-3 lg:col-start-1 lg:row-start-1">
             <label
-              className={`relative grid min-h-44 cursor-pointer place-items-center rounded-3xl border px-6 py-8 text-center shadow-inner shadow-black/30 transition ${isFileHovering ? "border-cyan-300/70 bg-cyan-400/10 shadow-cyan-950/30" : "border-white/12 bg-slate-950/45 hover:border-white/25 hover:bg-slate-900/55"}`}
+              className={`relative grid min-h-44 cursor-pointer place-items-center rounded-xl border border-dashed px-5 py-6 text-center transition focus-within:ring-2 focus-within:ring-sky-300/60 ${isFileHovering ? "border-cyan-300/70 bg-cyan-400/10" : "border-white/20 bg-slate-950/30 hover:border-white/40 hover:bg-slate-900/55"}`}
               onDragEnter={(event) => {
                 if (!hasDraggedFiles(event.dataTransfer)) return;
 
@@ -1461,6 +1557,7 @@ function ApplicationFiles({
                 onChange={(event) => appendFiles(Array.from(event.currentTarget.files ?? []))}
               />
               <span className="pointer-events-none">
+                <span className="detail-empty-icon mx-auto mb-3"><DirectoryIcon name="file-plus" /></span>
                 <span className={`block text-lg font-black ${isFileHovering ? "text-cyan-100" : "text-slate-100"}`}>
                   {selectedFiles.length > 0 ? `${selectedFiles.length} file${selectedFiles.length === 1 ? "" : "s"} ready` : "Drop files here"}
                 </span>
@@ -1516,7 +1613,7 @@ function ApplicationFiles({
             {uploadError(selectedFiles) ? <p role="alert" className="text-sm text-rose-200">{uploadError(selectedFiles)}</p> : null}
           </ActionForm>
 
-          <ActionForm action={attachApplicationDocuments.bind(null, application.id)} onSuccess={() => setSelectedDocumentIds([])} className="min-w-0 border-t border-white/10 pt-4 lg:col-start-1">
+          <ActionForm action={attachApplicationDocuments.bind(null, application.id)} onSuccess={() => setSelectedDocumentIds([])} className="detail-surface min-w-0 lg:col-start-1 lg:row-start-2">
             <h4 className={`font-mono text-xs font-bold uppercase tracking-[0.2em] ${theme.eyebrow}`}>From Documents</h4>
             {availableDocuments.length === 0 ? (
               <p className="mt-3 text-sm text-slate-400">{documents.length === 0 ? "No saved documents yet. Add some in Documents first." : "All saved documents are already attached."}</p>
@@ -1536,34 +1633,36 @@ function ApplicationFiles({
             )}
           </ActionForm>
 
-          <div className="min-w-0 border-t border-white/10 pt-4 lg:col-start-2 lg:row-span-2 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
+          <div className="min-w-0 lg:col-start-2 lg:row-start-1 lg:row-span-2">
             <h4 className={`font-mono text-xs font-bold uppercase tracking-[0.2em] ${theme.eyebrow}`}>Attached files</h4>
             {application.files.length === 0 ? (
-              <p className="mt-4 border-t border-white/10 px-1 py-4 text-sm font-semibold text-slate-500">No files uploaded yet.</p>
+              <DetailEmptyState icon="folder" title="No files uploaded yet." description="Drop a file into the upload area or attach a saved document from your library." />
             ) : (
-              <div className="mt-4 border-t border-white/10">
+              <div className="mt-4 grid gap-3">
                 {application.files.map((file) => (
-                  <div key={file.id} className="flex flex-col gap-3 border-b border-white/10 px-1 py-3 transition hover:border-white/20 hover:bg-white/[0.025] sm:flex-row sm:items-center sm:justify-between">
+                  <div key={file.id} className="detail-surface flex min-w-0 flex-col gap-4 transition hover:border-white/25">
                     <div className="min-w-0">
                       <a href={`/files/${file.id}`} className={`block break-words text-sm font-black ${theme.eyebrow}`}>
                         {file.fileName}
                       </a>
                       <p className="mt-1 text-xs font-semibold text-slate-500">
-                         {formatFileSize(file.fileSize)} / {formatDateTime(file.createdAt, timeZone)}
-                      </p>
+                          {formatFileSize(file.fileSize)} / {formatDateTime(file.createdAt, timeZone)}
+                       </p>
+                      <span className="detail-count mt-2 inline-block">{file.userDocumentId ? "From your library" : "Uploaded file"}</span>
                     </div>
                     <div className="flex flex-wrap gap-2">
+                      <a href={`/files/${file.id}`} className="detail-tool-button text-slate-200 hover:bg-white/10">Download</a>
                       {isPreviewableFile(file) ? (
                         <button
                           type="button"
-                          className={`inline-flex items-center border px-4 py-2 text-xs font-bold leading-none ${theme.eyebrow} hover:bg-white/10`}
+                          className={`detail-tool-button ${theme.eyebrow} hover:bg-white/10`}
                           onClick={() => setPreviewFile(file)}
                         >
                           Preview
                         </button>
                       ) : null}
                       <ActionForm action={deleteApplicationFile.bind(null, file.id)}>
-                        <button className="border border-rose-400/30 px-4 py-2 text-xs font-bold text-rose-300 hover:bg-rose-400/10">
+                        <button className="detail-tool-button border-rose-400/30 text-rose-300 hover:bg-rose-400/10">
                           Delete
                         </button>
                       </ActionForm>
@@ -1579,191 +1678,6 @@ function ApplicationFiles({
       {previewFile ? (
         <FilePreviewModal file={previewFile} theme={theme} onClose={() => setPreviewFile(null)} />
       ) : null}
-    </section>
-  );
-}
-
-function EmailLogSection({
-  application,
-  addEmailLog,
-  deleteEmailLog,
-  updateEmailLog,
-  theme,
-}: {
-  application: ApplicationDetail;
-  addEmailLog: (applicationId: string, formData: FormData) => unknown | Promise<unknown>;
-  deleteEmailLog: (emailLogId: string) => unknown | Promise<unknown>;
-  updateEmailLog: (emailLogId: string, formData: FormData) => unknown | Promise<unknown>;
-  theme: { timeline: string; timelineItem: string; eyebrow: string; fieldInput: string; button: string };
-}) {
-  const requestDiscard = useDiscardChanges();
-  const [isAddingEmail, setIsAddingEmail] = useState(false);
-  const [newEmailDirection, setNewEmailDirection] = useState<"RECEIVED" | "SENT">("RECEIVED");
-  const [editingEmailId, setEditingEmailId] = useState<string | null>(null);
-  const [editingEmailDirection, setEditingEmailDirection] = useState<"RECEIVED" | "SENT">("RECEIVED");
-
-  return (
-    <section className={`detail-module mt-3 border ${theme.timeline}`}>
-      <div className="detail-module-rail" />
-      <div className="relative p-4">
-        <div className="flex justify-start border-b border-white/10 pb-3">
-          <button type="button" className={`grid size-9 place-items-center rounded-lg ${theme.button}`} aria-label="New email log" title="New email log" onClick={() => requestDiscard(() => { setIsAddingEmail((current) => !current); setNewEmailDirection("RECEIVED"); })}>
-            <DirectoryIcon name="mail-plus" />
-          </button>
-        </div>
-        {isAddingEmail ? (
-          <ActionForm
-            action={addEmailLog.bind(null, application.id)} onSuccess={() => {
-              setIsAddingEmail(false);
-              setNewEmailDirection("RECEIVED");
-            }}
-            className="mt-3 overflow-hidden border border-white/10 bg-white/[0.035]"
-          >
-             <input name="subject" required autoFocus aria-label="Subject" placeholder="Subject" className="w-full bg-transparent px-4 py-3 text-base font-bold text-slate-100 outline-none placeholder:text-slate-500" />
-            <div className="grid border-y border-white/10 sm:grid-cols-4">
-               <select name="direction" aria-label="Email direction" value={newEmailDirection} onChange={(event) => setNewEmailDirection(event.target.value as "RECEIVED" | "SENT")} className={`min-w-0 border-0 px-4 py-3 text-sm outline-none sm:border-r sm:border-white/10 ${theme.fieldInput}`}><option value="RECEIVED" className={theme.fieldInput}>Received</option><option value="SENT" className={theme.fieldInput}>Sent</option></select>
-               <input name="recipient" aria-label={newEmailDirection === "SENT" ? "Sent to" : "Recipient"} placeholder={newEmailDirection === "SENT" ? "Sent to" : "Recipient"} className="min-w-0 bg-transparent px-4 py-3 text-sm text-slate-200 outline-none placeholder:text-slate-500 sm:border-r sm:border-white/10" />
-               <input name="emailUrl" type="url" aria-label="Email link" placeholder="Email link" className="min-w-0 bg-transparent px-4 py-3 text-sm text-slate-200 outline-none placeholder:text-slate-500 sm:border-r sm:border-white/10" />
-               <input name="sentAt" type="datetime-local" required aria-label="Date and time" defaultValue={toDatetimeLocal(new Date().toISOString())} className="min-w-0 bg-transparent px-4 py-3 text-sm text-slate-300 outline-none" />
-            </div>
-            <textarea name="notes" aria-label="Email notes" placeholder="Notes" rows={4} className="w-full resize-none bg-transparent px-4 py-3 text-sm leading-7 text-slate-200 outline-none placeholder:text-slate-500" />
-            <div className="flex items-center justify-between border-t border-white/10 px-3 py-2">
-              <DiscardButton onDiscard={() => { setIsAddingEmail(false); setNewEmailDirection("RECEIVED"); }} />
-              <button className={`grid size-9 place-items-center ${theme.button}`} aria-label="Save email log" title="Save email log"><DirectoryIcon name="check" /></button>
-            </div>
-          </ActionForm>
-        ) : null}
-
-        <div className="mt-3 grid divide-y divide-white/10">
-          {application.emailLogs.map((email) => (
-            <article key={email.id} className="group flex min-w-0 items-center gap-3 px-3 py-3">
-                {editingEmailId === email.id ? (
-                  <ActionForm
-                    action={updateEmailLog.bind(null, email.id)} onSuccess={() => setEditingEmailId(null)}
-                    className="min-w-0 flex-1 overflow-hidden border border-white/10 bg-white/[0.035]"
-                  >
-                    <input name="subject" required autoFocus aria-label="Subject" defaultValue={email.subject} className="w-full bg-transparent px-4 py-3 text-base font-bold text-slate-100 outline-none" />
-                    <div className="grid border-y border-white/10 sm:grid-cols-4">
-                       <select name="direction" aria-label="Email direction" value={editingEmailDirection} onChange={(event) => setEditingEmailDirection(event.target.value as "RECEIVED" | "SENT")} className={`min-w-0 border-0 px-4 py-3 text-sm outline-none sm:border-r sm:border-white/10 ${theme.fieldInput}`}><option value="RECEIVED" className={theme.fieldInput}>Received</option><option value="SENT" className={theme.fieldInput}>Sent</option></select>
-                       <input name="recipient" aria-label={editingEmailDirection === "SENT" ? "Sent to" : "Recipient"} defaultValue={email.recipient ?? ""} placeholder={editingEmailDirection === "SENT" ? "Sent to" : "Recipient"} className="min-w-0 bg-transparent px-4 py-3 text-sm text-slate-200 outline-none placeholder:text-slate-500 sm:border-r sm:border-white/10" />
-                       <input name="emailUrl" type="url" aria-label="Email link" defaultValue={email.emailUrl ?? ""} placeholder="Email link" className="min-w-0 bg-transparent px-4 py-3 text-sm text-slate-200 outline-none placeholder:text-slate-500 sm:border-r sm:border-white/10" />
-                       <input name="sentAt" type="datetime-local" required aria-label="Date and time" defaultValue={toDatetimeLocal(email.sentAt)} className="min-w-0 bg-transparent px-4 py-3 text-sm text-slate-300 outline-none" />
-                    </div>
-                    <textarea name="notes" aria-label="Email notes" placeholder="Notes" rows={4} defaultValue={email.notes ?? ""} className="w-full resize-none bg-transparent px-4 py-3 text-sm leading-7 text-slate-200 outline-none placeholder:text-slate-500" />
-                    <div className="flex items-center justify-between border-t border-white/10 px-3 py-2"><DiscardButton onDiscard={() => setEditingEmailId(null)} /><button className={`grid size-9 place-items-center ${theme.button}`} aria-label="Save email log" title="Save email log"><DirectoryIcon name="check" /></button></div>
-                  </ActionForm>
-                ) : (
-                  <>
-                    <button type="button" className="flex min-w-0 flex-1 items-center gap-3 text-left" onDoubleClick={() => requestDiscard(() => { setEditingEmailId(email.id); setEditingEmailDirection(email.direction); })} onKeyDown={(event) => { if (event.key === "Enter") requestDiscard(() => { setEditingEmailId(email.id); setEditingEmailDirection(email.direction); }); }} title={`Open ${email.subject}`}>
-                      <span className="grid size-8 shrink-0 place-items-center text-slate-400"><DirectoryIcon name="mail" /></span>
-                       <span className="min-w-0"><span className="block truncate text-sm font-semibold text-slate-200">{email.subject}</span><span className="mt-0.5 block truncate text-xs text-slate-500">{[email.direction === "SENT" ? "Sent to" : "Received", email.recipient, formatExactDateTime(email.sentAt)].filter(Boolean).join(" / ")}</span></span>
-                    </button>
-                    <div className="flex shrink-0 items-center gap-1 opacity-0 transition group-hover:opacity-100 focus-within:opacity-100">
-                      {email.emailUrl ? <button type="button" className="grid size-8 place-items-center text-slate-500 transition hover:bg-white/10 hover:text-white" aria-label="Open email" title="Open email" onClick={() => window.open(email.emailUrl ?? "", "_blank", "noopener,noreferrer")}><DirectoryIcon name="external" /></button> : null}
-                      <ActionForm action={deleteEmailLog.bind(null, email.id)}><button className="grid size-8 place-items-center text-slate-500 transition hover:bg-rose-400/10 hover:text-rose-300" aria-label="Delete email log" title="Delete email log"><DirectoryIcon name="trash" /></button></ActionForm>
-                    </div>
-                  </>
-                )}
-            </article>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function InterviewSection({
-  application,
-  addInterview,
-  deleteInterview,
-  updateInterview,
-  theme,
-}: {
-  application: ApplicationDetail;
-  addInterview: (applicationId: string, formData: FormData) => unknown | Promise<unknown>;
-  deleteInterview: (interviewId: string) => unknown | Promise<unknown>;
-  updateInterview: (interviewId: string, formData: FormData) => unknown | Promise<unknown>;
-  theme: { timeline: string; eyebrow: string; fieldInput: string; button: string };
-}) {
-  const requestDiscard = useDiscardChanges();
-  const [isAddingInterview, setIsAddingInterview] = useState(false);
-  const [editingInterviewId, setEditingInterviewId] = useState<string | null>(null);
-
-  return (
-    <section className={`detail-module mt-3 border ${theme.timeline}`}>
-      <div className="detail-module-rail" />
-      <div className="p-4">
-        <div className="flex justify-start border-b border-white/10 pb-3">
-          <button
-            type="button"
-            aria-label="Add interview"
-            title="Add interview"
-            className={`grid size-9 place-items-center rounded-lg ${theme.button}`}
-            onClick={() => requestDiscard(() => setIsAddingInterview((current) => !current))}
-          >
-            <DirectoryIcon name="calendar-plus" />
-          </button>
-        </div>
-        {isAddingInterview ? (
-          <ActionForm
-            action={addInterview.bind(null, application.id)} onSuccess={() => setIsAddingInterview(false)}
-            className="mt-3 overflow-hidden border border-white/10 bg-white/[0.035]"
-          >
-            <input name="title" required autoFocus aria-label="Interview round name" placeholder="Interview round name" className="w-full bg-transparent px-4 py-3 text-base font-bold text-slate-100 outline-none placeholder:text-slate-500" />
-            <div className="grid border-y border-white/10 sm:grid-cols-2">
-              <input name="interviewType" aria-label="Interview type" placeholder="Interview type" className="min-w-0 bg-transparent px-4 py-3 text-sm text-slate-200 outline-none placeholder:text-slate-500 sm:border-r sm:border-white/10" />
-              <input name="scheduledAt" type="datetime-local" aria-label="Scheduled at" className="min-w-0 bg-transparent px-4 py-3 text-sm text-slate-300 outline-none" />
-            </div>
-            <textarea name="studyNotes" aria-label="Study plan" placeholder="Study plan" rows={3} className="w-full resize-none border-b border-white/10 bg-transparent px-4 py-3 text-sm leading-7 text-slate-200 outline-none placeholder:text-slate-500" />
-            <textarea name="notes" aria-label="Interview notes" placeholder="Notes" rows={3} className="w-full resize-none bg-transparent px-4 py-3 text-sm leading-7 text-slate-200 outline-none placeholder:text-slate-500" />
-            <div className="flex items-center justify-between border-t border-white/10 px-3 py-2">
-              <DiscardButton onDiscard={() => setIsAddingInterview(false)} />
-              <button className={`grid size-9 place-items-center ${theme.button}`} aria-label="Save interview" title="Save interview"><DirectoryIcon name="check" /></button>
-            </div>
-          </ActionForm>
-        ) : null}
-
-        {application.interviews.length === 0 ? (
-          <p className="mt-4 border-t border-white/10 px-1 py-4 text-sm font-semibold text-slate-500">No interview rounds added yet.</p>
-        ) : (
-          <div className="mt-4 border-t border-white/10">
-            {application.interviews.map((interview) => editingInterviewId === interview.id ? (
-              <ActionForm key={interview.id} action={updateInterview.bind(null, interview.id)} onSuccess={() => setEditingInterviewId(null)} className="my-3 overflow-hidden border border-white/10 bg-white/[0.035]">
-                <input name="title" required autoFocus aria-label="Interview round name" defaultValue={interview.title} className="w-full bg-transparent px-4 py-3 text-base font-bold text-slate-100 outline-none" />
-                <div className="grid border-y border-white/10 sm:grid-cols-2">
-                  <input name="interviewType" aria-label="Interview type" defaultValue={interview.interviewType ?? ""} className="min-w-0 bg-transparent px-4 py-3 text-sm text-slate-200 outline-none sm:border-r sm:border-white/10" />
-                  <input name="scheduledAt" type="datetime-local" aria-label="Scheduled at" defaultValue={interview.scheduledAt ? toDatetimeLocal(interview.scheduledAt) : ""} className="min-w-0 bg-transparent px-4 py-3 text-sm text-slate-300 outline-none" />
-                </div>
-                <textarea name="studyNotes" aria-label="Study plan" rows={3} defaultValue={interview.studyNotes ?? ""} className="w-full resize-none border-b border-white/10 bg-transparent px-4 py-3 text-sm leading-7 text-slate-200 outline-none" />
-                <textarea name="notes" aria-label="Interview notes" rows={3} defaultValue={interview.notes ?? ""} className="w-full resize-none bg-transparent px-4 py-3 text-sm leading-7 text-slate-200 outline-none" />
-                <div className="flex items-center justify-between border-t border-white/10 px-3 py-2">
-                  <DiscardButton onDiscard={() => setEditingInterviewId(null)} />
-                  <button className={`grid size-9 place-items-center ${theme.button}`} aria-label="Save interview" title="Save interview"><DirectoryIcon name="check" /></button>
-                </div>
-              </ActionForm>
-            ) : (
-              <article key={interview.id} className="border-b border-white/10 py-4 transition hover:bg-white/[0.025]">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0 px-1">
-                    <p className="break-words text-sm font-black text-slate-100">{interview.title}</p>
-                    <p className="mt-1 font-mono text-xs font-semibold text-slate-500">
-                      {[interview.interviewType || "No type", interview.scheduledAt ? formatExactDateTime(interview.scheduledAt) : "No date set"].join(" / ")}
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    <button type="button" className="border border-white/10 px-3 py-2 text-xs font-bold text-slate-200 hover:bg-white/10" onClick={() => requestDiscard(() => setEditingInterviewId(interview.id))}>Edit</button>
-                    <ActionForm action={deleteInterview.bind(null, interview.id)}>
-                      <button className="border border-rose-400/30 px-3 py-2 text-xs font-bold text-rose-300 hover:bg-rose-400/10">Delete</button>
-                    </ActionForm>
-                  </div>
-                </div>
-                {interview.studyNotes ? <p className="mt-3 whitespace-pre-wrap break-words px-1 text-sm font-semibold text-slate-300"><span className="font-black text-slate-500">Study: </span>{interview.studyNotes}</p> : null}
-                {interview.notes ? <p className="mt-2 whitespace-pre-wrap break-words px-1 text-sm font-semibold text-slate-300"><span className="font-black text-slate-500">Notes: </span>{interview.notes}</p> : null}
-              </article>
-            ))}
-          </div>
-        )}
-      </div>
     </section>
   );
 }
@@ -1852,23 +1766,29 @@ function StatusHistorySection({
     <section className={`detail-module mt-3 border ${theme.timeline}`}>
       <div className="detail-module-rail" />
       <div className="p-4">
-        <h3 className={`font-mono text-xs font-bold uppercase tracking-[0.2em] ${theme.eyebrow}`}>Status history</h3>
+        <div className="detail-toolbar">
+          <div><h3 className="text-sm font-semibold text-slate-100">Application timeline</h3><p className="mt-1 text-xs text-slate-400">Every status update, from your first application onward.</p></div>
+          <span className="detail-count">{changes.length} updates</span>
+        </div>
         {changes.length === 0 ? (
-          <p className="mt-4 border-t border-white/10 px-1 py-4 text-sm font-semibold text-slate-500">No status changes logged yet.</p>
+          <DetailEmptyState icon="calendar-plus" title="No status changes logged yet." description="Your status updates will appear here as the application progresses." />
         ) : (
-          <div className="mt-4 grid gap-3 border-t border-white/10 pt-4">
-            {changes.map((change) => (
-              <article key={change.id} className={`flex flex-col gap-2 rounded-2xl border p-4 sm:flex-row sm:items-center sm:justify-between ${theme.timelineItem}`}>
+          <ol className="detail-history mt-5 grid gap-4">
+            {changes.map((change, index) => (
+              <li key={change.id} className="relative pl-7 sm:pl-9">
+              <span aria-hidden="true" className={`detail-history-dot ${statusSelectTextStyles[change.status]}`} />
+              <article className="detail-surface flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Status changed to</p>
+                  <p className="text-xs font-semibold text-slate-400">Status changed to{index === 0 ? " · Latest update" : ""}</p>
                   <p className={`mt-1 text-lg font-black ${statusSelectTextStyles[change.status]}`}>{statusLabels[change.status]}</p>
                 </div>
-                <time className="font-mono text-sm font-bold text-slate-300" dateTime={change.changedAt}>
+                <time className="text-xs leading-6 text-slate-400" dateTime={change.changedAt}>
                   {formatExactDateTime(change.changedAt)}
                 </time>
               </article>
+              </li>
             ))}
-          </div>
+          </ol>
         )}
       </div>
     </section>
@@ -1909,7 +1829,7 @@ function Detail({
       role={navigationId ? "group" : undefined}
       aria-label={navigationId ? label : undefined}
       aria-keyshortcuts={navigationId && editable ? "Enter" : undefined}
-      className={`detail-field group/detail relative border-b border-white/10 py-4 pr-12 text-left transition ${theme?.fieldGlow ?? "hover:border-white/20"} ${editable ? "" : "cursor-default"} ${wide ? "sm:col-span-2" : ""}`}
+      className={`detail-field group/detail relative ${label === "Job description" ? "py-1" : `border-b border-white/10 py-4 pr-12 ${theme?.fieldGlow ?? "hover:border-white/20"}`} text-left transition ${editable ? "" : "cursor-default"} ${wide ? "sm:col-span-2" : ""}`}
       onKeyDown={(event) => {
         if (event.key !== "Enter" || event.target !== event.currentTarget || !editable || !onEdit) return;
         event.preventDefault();
@@ -1954,7 +1874,7 @@ function JobDescriptionReadView({
   const [copied, setCopied] = useState(false);
   const lines = value.split("\n").map((line) => line.trim());
   const sections = jobDescriptionSections(lines);
-  const wordCount = value === "No job description added" ? 0 : value.trim().split(/\s+/).filter(Boolean).length;
+  const hasDescription = value !== "No job description added" && value.trim().length > 0;
 
   async function copyDescription() {
     try {
@@ -1967,58 +1887,34 @@ function JobDescriptionReadView({
   }
 
   return (
-    <section className={`mt-3 overflow-hidden border border-white/10 bg-slate-950/35 ${valueClassName ?? "text-slate-200"}`}>
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-white/[0.025] px-4 py-3">
-        <p className="text-[0.68rem] font-black uppercase tracking-[0.18em] text-slate-400">
-          {wordCount === 0 ? "No description" : `${wordCount.toLocaleString()} words`}
-        </p>
-        <div className="flex items-center gap-2">
-          {wordCount > 0 ? (
-            <button
-              type="button"
-              className="border border-white/10 px-3 py-1.5 text-[0.68rem] font-black uppercase tracking-[0.14em] text-slate-300 transition hover:border-white/25 hover:bg-white/10 hover:text-white"
-              onClick={() => void copyDescription()}
-            >
-              {copied ? "Copied" : "Copy"}
-            </button>
-          ) : null}
-          {onEdit ? (
-            <button
-              type="button"
-              className="border border-sky-300/30 bg-sky-400/10 px-3 py-1.5 text-[0.68rem] font-black uppercase tracking-[0.14em] text-sky-100 transition hover:border-sky-200/60 hover:bg-sky-400/20 hover:text-white"
-              onClick={onEdit}
-            >
-              Edit
-            </button>
-          ) : null}
-        </div>
-      </div>
-      <div className="grid gap-6 p-4 text-sm leading-6">
+    <section className={`job-description-reader ${valueClassName ?? "text-slate-200"}`}>
+      {!hasDescription ? <DetailEmptyState icon="file" title="No job description added" description="Add the posting to keep the role’s responsibilities and requirements handy." /> : <div className="job-description-content job-description-scroll status-graph-scroll" role="region" aria-label="Job description content" tabIndex={0}>
         {sections.map((section, sectionIndex) => (
-          <div key={`${section.heading ?? "intro"}-${sectionIndex}`} className="grid gap-2">
+          <div key={`${section.heading ?? "intro"}-${sectionIndex}`} className="job-description-section">
             {section.heading ? (
-              <h4 className="border-l-2 border-sky-300/70 pl-3 text-xs font-black uppercase tracking-[0.14em] text-slate-100">
+              <h4>
                 {section.heading}
               </h4>
             ) : null}
-            <div className="grid gap-2">
-              {section.lines.map(({ line, index }) => {
-                if (!line) return <div key={`space-${index}`} data-job-description-line={index} className="h-2" />;
-
-                if (isJobDescriptionBullet(line)) {
-                  return (
-                    <p key={`${line}-${index}`} data-job-description-line={index} className="relative pl-7 font-semibold text-slate-300">
-                      <span className="absolute left-0 font-black text-sky-300">{jobDescriptionBulletMarker(line)}</span>
-                      {line.replace(/^(?:[-*]|\d+[.)])\s+/, "")}
-                    </p>
-                  );
-                }
-
-                return <p key={`${line}-${index}`} data-job-description-line={index} className="font-semibold text-slate-300">{line}</p>;
-              })}
-            </div>
+            {jobDescriptionBlocks(section.lines).map((block, index) => {
+              if (block.type === "paragraph") return <p key={index} data-job-description-line={block.lines[0].index}>{block.lines.map((item) => item.line).join(" ")}</p>;
+              const List = block.type === "ordered" ? "ol" : "ul";
+              return <List key={index} start={block.type === "ordered" ? Number.parseInt(block.lines[0].line, 10) : undefined}>
+                {block.lines.map((item) => <li key={item.index} data-job-description-line={item.index}>{item.line.replace(/^(?:[-*•●▪◦‣–—]|\d+[.)])\s+/, "")}</li>)}
+              </List>;
+            })}
           </div>
         ))}
+      </div>}
+      <div className="job-description-toolbar flex items-center gap-2">
+        {hasDescription ? (
+          <button type="button" className="detail-tool-button text-slate-300 transition hover:border-white/25 hover:bg-white/10 hover:text-white" onClick={() => void copyDescription()}>
+            {copied ? "Copied" : "Copy"}
+          </button>
+        ) : null}
+        {onEdit ? (
+          <button type="button" className="detail-tool-button border-sky-300/30 bg-sky-400/10 text-sky-100 transition hover:border-sky-200/60 hover:bg-sky-400/20 hover:text-white" onClick={onEdit}>Edit</button>
+        ) : null}
       </div>
     </section>
   );
@@ -2031,7 +1927,7 @@ function jobDescriptionSections(lines: string[]) {
   lines.forEach((line, index) => {
     if (line && isJobDescriptionHeading(line)) {
       if (current.heading || current.lines.some((item) => item.line)) sections.push(current);
-      current = { heading: line.replace(/^#+\s*/, "").replace(/:$/, ""), lines: [] };
+      current = { heading: jobDescriptionHeadingText(line), lines: [] };
       return;
     }
 
@@ -2043,20 +1939,36 @@ function jobDescriptionSections(lines: string[]) {
 }
 
 function isJobDescriptionBullet(line: string) {
-  return /^(?:[-*]|\d+[.)])\s+/.test(line);
+  return /^(?:[-*•●▪◦‣–—]|\d+[.)])\s+/.test(line);
 }
 
-function jobDescriptionBulletMarker(line: string) {
-  const match = line.match(/^(?:([-*])|(\d+[.)]))\s+/);
-  return match?.[2] ?? ">";
+function jobDescriptionBlocks(lines: Array<{ line: string; index: number }>) {
+  const blocks: Array<{ type: "paragraph" | "ordered" | "unordered"; lines: typeof lines }> = [];
+  let current: (typeof blocks)[number] | undefined;
+  for (const item of lines) {
+    if (!item.line) { current = undefined; continue; }
+    const type = /^\d+[.)]\s+/.test(item.line) ? "ordered" : isJobDescriptionBullet(item.line) ? "unordered" : "paragraph";
+    if (!current || current.type !== type) {
+      current = { type, lines: [] };
+      blocks.push(current);
+    }
+    current.lines.push(item);
+  }
+  return blocks;
+}
+
+function jobDescriptionHeadingText(line: string) {
+  return line.replace(/^#+\s*/, "").replace(/^\*\*(.*?)\*\*$/, "$1").replace(/:$/, "");
 }
 
 function isJobDescriptionHeading(line: string) {
-  const normalized = line.replace(/^#+\s*/, "").replace(/:$/, "");
+  const normalized = jobDescriptionHeadingText(line);
 
   if (normalized.length > 90 || isJobDescriptionBullet(normalized) || /[.!?]$/.test(normalized)) {
     return false;
   }
+
+  if (/^#{1,6}\s+/.test(line) || /^\*\*.+\*\*$/.test(line)) return true;
 
   const commonHeadings = new Set([
     "introduction",
@@ -2069,6 +1981,25 @@ function isJobDescriptionHeading(line: string) {
     "qualifications",
     "responsibilities",
     "requirements",
+    "about the job",
+    "about us",
+    "about you",
+    "about the company",
+    "what you'll do",
+    "what you’ll do",
+    "what you'll bring",
+    "what you’ll bring",
+    "what we offer",
+    "who you are",
+    "who we are",
+    "skills",
+    "benefits",
+    "preferred qualifications",
+    "minimum qualifications",
+    "key responsibilities",
+    "equal opportunity",
+    "hiring process",
+    "application process",
   ]);
 
   if (commonHeadings.has(normalized.toLowerCase())) {
@@ -2135,7 +2066,7 @@ function InlineEditableDetail({
         setIsFullscreen(false);
         onDone();
       }}
-      className={isFullscreen ? "fixed inset-0 z-[60] grid grid-rows-[auto_1fr_auto] gap-5 overscroll-contain overflow-y-auto bg-slate-950 p-5 text-left sm:p-8" : `border-b py-4 pr-12 transition ${theme.fieldBorder} ${theme.fieldGlow} ${wide ? "sm:col-span-2" : ""}`}
+      className={isFullscreen ? "fixed inset-0 z-[60] grid grid-rows-[auto_1fr_auto] gap-5 overscroll-contain overflow-y-auto bg-slate-950 p-5 text-left sm:p-8" : `${name === "jobDescription" ? "detail-surface mt-4" : `border-b py-4 pr-12 ${theme.fieldGlow}`} transition ${theme.fieldBorder} ${wide ? "sm:col-span-2" : ""}`}
     >
       {isFullscreen ? (
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">

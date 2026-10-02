@@ -649,18 +649,21 @@ export async function moveApplicationNote(noteId: string, folderId: string) {
     where: { id: noteId, userId: user.id, application: { userId: user.id, deletedAt: null } },
     select: { applicationId: true },
   });
-  if (!note) return;
+  if (!note) return { success: false, message: "Note not found." };
 
-  const folder = await prisma.applicationNoteFolder.findFirst({
-    where: { id: folderId, applicationId: note.applicationId, userId: user.id },
-    select: { id: true },
-  });
-  if (!folder) return;
+  if (folderId) {
+    const folder = await prisma.applicationNoteFolder.findFirst({
+      where: { id: folderId, applicationId: note.applicationId, userId: user.id },
+      select: { id: true },
+    });
+    if (!folder) return { success: false, message: "Note folder not found." };
+  }
 
-  await prisma.applicationNote.updateMany({
+  const updated = await prisma.applicationNote.updateMany({
     where: { id: noteId, userId: user.id, application: { userId: user.id, deletedAt: null } },
-    data: { folderId },
+    data: { folderId: folderId || null },
   });
+  if (!updated.count) return { success: false, message: "Note not found." };
   revalidatePath("/");
   return { success: true, message: "Note moved." };
 }
@@ -1386,6 +1389,62 @@ export async function deleteApplications(formData: FormData) {
 
   revalidatePath("/");
   return { success: true, message: "Applications moved to trash for 30 days." };
+}
+
+export async function permanentlyDeleteApplication(deletedApplicationId: string) {
+  const user = await requireUser();
+  const count = await purgeDeletedApplications(user.id, [deletedApplicationId]);
+  revalidatePath("/");
+  return count
+    ? { success: true, message: "Application permanently deleted." }
+    : { success: false, message: "Deleted application not found." };
+}
+
+export async function permanentlyDeleteApplications(formData: FormData) {
+  const user = await requireUser();
+  const ids = [...new Set(formData.getAll("applicationIds").filter((id): id is string => typeof id === "string" && id.length > 0))];
+  if (ids.length === 0 || ids.length > 1100) {
+    return { success: false, message: "Select between 1 and 1100 applications to delete." };
+  }
+  const count = await purgeDeletedApplications(user.id, ids);
+  revalidatePath("/");
+  return count
+    ? { success: true, message: `${count} selected applications permanently deleted.` }
+    : { success: false, message: "Selected deleted applications not found." };
+}
+
+export async function emptyRecycleBin() {
+  const user = await requireUser();
+  await purgeDeletedApplications(user.id);
+  revalidatePath("/");
+  return { success: true, message: "Recycle bin emptied." };
+}
+
+async function purgeDeletedApplications(userId: string, ids?: string[]) {
+  const deleted = await prisma.$transaction(async (tx) => {
+    const where = { userId, ...(ids ? { id: { in: ids } } : {}), deletedAt: { not: null } };
+    const legacyWhere = { userId, ...(ids ? { id: { in: ids } } : {}) };
+    const applications = await tx.application.findMany({
+      where,
+      select: {
+        companyLogoPath: true,
+        files: { where: { userDocumentId: null }, select: { storagePath: true } },
+      },
+    });
+    const legacy = await tx.deletedApplication.findMany({
+      where: legacyWhere,
+      select: { companyLogoPath: true },
+    });
+    const result = await tx.application.deleteMany({ where });
+    const legacyResult = await tx.deletedApplication.deleteMany({ where: legacyWhere });
+    return { applications, legacy, count: result.count + legacyResult.count };
+  });
+  await removeStoredFiles(deleted.applications.flatMap((item) => item.files.map((file) => file.storagePath)), uploadsRoot);
+  await removeStoredFiles(
+    [...deleted.applications, ...deleted.legacy].flatMap((item) => item.companyLogoPath ? [item.companyLogoPath] : []),
+    companyLogoUploadsRoot,
+  );
+  return deleted.count;
 }
 
 export async function restoreDeletedApplication(deletedApplicationId: string) {
