@@ -23,6 +23,20 @@ test("captured pages without structured data use the site's layout fields", () =
   assert.equal(values.jobDescription, "About the job\n\nBuild invented tools.\nRequires <5 years of experience.");
 });
 
+test("signed-in LinkedIn captures read the company from the title and trim the location line", () => {
+  const values = capturedPostingValues({
+    ...base,
+    url: "https://www.linkedin.com/jobs/view/4470712481/",
+    title: "(3) Cloud Engineer | Fictional Vertex | LinkedIn",
+    h1: "Cloud Engineer",
+    location: "Kanata, Ontario, Canada · 6 days ago · 40 applicants",
+    description: "Build invented cloud platforms.",
+  });
+  assert.equal(values.company, "Fictional Vertex");
+  assert.equal(values.role, "Cloud Engineer");
+  assert.equal(values.location, "Kanata, Ontario, Canada");
+});
+
 test("structured data in a capture wins over layout guesses", () => {
   const posting = { "@type": "JobPosting", title: "Data Analyst", hiringOrganization: { name: "Fictional Harbor Analytics" }, description: "<p>Analyse invented data.</p>" };
   const values = capturedPostingValues({ ...base, h1: "Wrong heading", company: "Wrong company", ld: [JSON.stringify(posting)] });

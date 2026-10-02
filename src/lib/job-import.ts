@@ -231,7 +231,9 @@ function roleFromTitle(title: string, company: string | undefined) {
 }
 
 function parseLinkedInTitle(title: string) {
-  const normalized = title.replace(/\s+\|\s+LinkedIn(?:\s+Jobs)?\s*$/i, "").trim();
+  const onLinkedIn = /\s\|\s+LinkedIn(?:\s+Jobs)?\s*$/i.test(title);
+  // Signed-in pages prefix the title with a notification count, e.g. "(3) ".
+  const normalized = title.replace(/\s+\|\s+LinkedIn(?:\s+Jobs)?\s*$/i, "").replace(/^\(\d+\+?\)\s+/, "").trim();
   const hiringMatch = normalized.match(/^(.+?)\s+hiring\s+(.+?)\s+in\s+(.+)$/i);
 
   if (hiringMatch) {
@@ -250,6 +252,13 @@ function parseLinkedInTitle(title: string) {
       role: atMatch[1]?.trim() ?? "",
       location: atMatch[3]?.trim() ?? "",
     };
+  }
+
+  // Signed-in job pages use "Role | Company | LinkedIn".
+  const pipeMatch = onLinkedIn ? normalized.match(/^(.+?)\s+\|\s+([^|]+)$/) : null;
+
+  if (pipeMatch) {
+    return { company: pipeMatch[2]?.trim() ?? "", role: pipeMatch[1]?.trim() ?? "", location: "" };
   }
 
   return { company: "", role: "", location: "" };

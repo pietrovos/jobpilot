@@ -12,8 +12,9 @@ import { consumeRateLimit } from "@/lib/backend-limits";
 import { webUrlSchema } from "@/lib/backend-validation";
 import { prisma } from "@/lib/db";
 import { capturedPostingSchema, capturedPostingValues } from "@/lib/job-capture";
-import { fetchJobPosting } from "@/lib/job-fetch";
-import { emptyExtractJobState, failedExtract, normalizeJobUrl, type ExtractJobState } from "@/lib/job-import";
+import { fetchFromJobSource, fetchJobPosting } from "@/lib/job-fetch";
+import { matchJobSource } from "@/lib/job-sources";
+import { emptyExtractJobState, failedExtract, mergeJobValues, normalizeJobUrl, type ExtractJobState } from "@/lib/job-import";
 import { jobIdFromUrl } from "@/lib/job-id";
 import { withUploadBatch } from "@/lib/upload-batch";
 import { applicationSchema, applicationValidationMessage, nullable, value } from "./form-data";
@@ -60,7 +61,14 @@ export async function importCapturedPosting(payload: unknown): Promise<ExtractJo
   const parsed = capturedPostingSchema.safeParse(payload);
   if (!parsed.success) return { ...emptyExtractJobState, message: "That capture could not be read. Click Save to JobPilot on the job page again." };
 
-  const values = capturedPostingValues(parsed.data);
+  // The capture comes first; a site JobPilot can also read directly (such as
+  // LinkedIn's guest page) fills in fields the page layout hid from it.
+  const captured = capturedPostingValues(parsed.data);
+  const missing = !captured.company || !captured.role || !captured.location || !captured.jobDescription;
+  const fromSource = missing && matchJobSource(captured.jobUrl) && await consumeRateLimit(`fetch:${user.id}`, 20, 60 * 60 * 1000)
+    ? await fetchFromJobSource(captured.jobUrl)
+    : {};
+  const values = { ...mergeJobValues(captured, fromSource), jobUrl: captured.jobUrl };
   const found = Boolean(values.company || values.role || values.jobDescription);
   return {
     message: found

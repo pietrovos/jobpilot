@@ -12,6 +12,13 @@ const io: SourceIO = {
   html: async (url) => (await safeFetch(url, "html", MAX_RESPONSE_BYTES)).buffer.toString("utf8"),
 };
 
+// Values from the job site's own API or guest page, for filling in what a browser
+// capture missed. Returns nothing for sites without a dedicated source.
+export async function fetchFromJobSource(jobUrl: string): Promise<Partial<JobValues>> {
+  const source = matchJobSource(jobUrl);
+  return source ? source.load(io).catch(() => ({})) : {};
+}
+
 export type FetchedPosting = {
   values: JobValues;
   // The final page URL after redirects, used to allow a logo from the same site.

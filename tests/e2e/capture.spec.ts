@@ -48,3 +48,21 @@ test("opening the capture page without a capture explains how to use the button"
   await expect(page.getByText("Nothing was captured.")).toBeVisible();
   await expect(page.getByRole("link", { name: "Save to JobPilot" })).toHaveAttribute("href", "/bookmarklet");
 });
+
+test("Save to JobPilot finds the company from the profile link beside the job title", async ({ page, context }) => {
+  const code = await bookmarkletCode(page);
+  await page.goto("/login");
+  await page.getByRole("button", { name: "Continue as guest" }).click();
+  await expect(page).toHaveURL("http://localhost:3100/");
+  await context.route("https://social.fictional.test/**", (route) => route.fulfill({ contentType: "text/html", body: `<!doctype html><html><head><title>Notifications</title></head><body>
+    <section><div><h1>Cloud Engineer</h1><div><a href="https://social.fictional.test/company/fictional-vertex/life/">Fictional Vertex</a></div></div>
+    <article>Build invented cloud platforms for a fictional team.</article></section></body></html>` }));
+  await page.goto("https://social.fictional.test/jobs/view/123456/");
+
+  const popupPromise = context.waitForEvent("page");
+  await page.evaluate(code);
+  const popup = await popupPromise;
+  const dialog = popup.getByRole("dialog", { name: "Add application" });
+  await expect(dialog.getByLabel("Company", { exact: true })).toHaveValue("Fictional Vertex");
+  await expect(dialog.getByLabel("Role", { exact: true })).toHaveValue("Cloud Engineer");
+});

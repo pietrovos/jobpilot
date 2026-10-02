@@ -41,7 +41,8 @@ export function capturedPostingValues(posting: CapturedPosting): JobValues {
   // structured data, when the page has it, is more reliable than both.
   const fromLayout = {
     company: clean(posting.company),
-    location: clean(posting.location),
+    // LinkedIn shows "Kanata, ON · 6 days ago · 40 applicants"; keep the place.
+    location: clean(posting.location.split(/\s+[·•]\s+/)[0] ?? ""),
     jobDescription: plainText(posting.description).slice(0, 12000),
   };
   return { ...mergeJobValues(posting.ld.length > 0 ? fromPage : {}, fromLayout, fromPage), jobUrl };

@@ -12,6 +12,15 @@ const captureScript = `(() => {
     }
     return "";
   };
+  // The company is usually a link to its profile next to the job title.
+  const companyNearHeading = () => {
+    let node = document.querySelector("h1");
+    for (let depth = 0; node && depth < 8; depth++, node = node.parentElement) {
+      const link = node.querySelector('a[href*="/company/"]');
+      if (text(link)) return text(link);
+    }
+    return "";
+  };
   const meta = {};
   for (const tag of document.querySelectorAll("meta[property],meta[name]")) {
     const name = (tag.getAttribute("property") || tag.getAttribute("name") || "").toLowerCase();
@@ -27,8 +36,8 @@ const captureScript = `(() => {
     url: location.href.slice(0, 2048),
     title: document.title.slice(0, 300),
     h1: text(document.querySelector("h1")).slice(0, 300),
-    company: pick([".job-details-jobs-unified-top-card__company-name", ".jobs-unified-top-card__company-name", "[data-testid='inlineHeader-companyName']", "[data-company-name]", ".topcard__org-name-link"]).slice(0, 200),
-    location: pick(["[data-testid='inlineHeader-companyLocation']", "[data-testid='job-location']", ".job-details-jobs-unified-top-card__bullet", ".topcard__flavor--bullet"]).slice(0, 200),
+    company: (pick([".job-details-jobs-unified-top-card__company-name", ".jobs-unified-top-card__company-name", "[data-testid='inlineHeader-companyName']", "[data-company-name]", ".topcard__org-name-link"]) || companyNearHeading()).slice(0, 200),
+    location: pick(["[data-testid='inlineHeader-companyLocation']", "[data-testid='job-location']", ".job-details-jobs-unified-top-card__tertiary-description-container", ".job-details-jobs-unified-top-card__bullet", ".topcard__flavor--bullet"]).slice(0, 200),
     description: (selection || pick(["#jobDescriptionText", "#job-details", ".jobs-description__content", ".show-more-less-html__markup", "[data-testid='jobsearch-JobComponent-description']", "main", "article", "[role='main']"])).slice(0, 20000),
     meta,
     ld,
