@@ -1,0 +1,13 @@
+{
+  "id": "744000153235279",
+  "refNumber": "REF296212T",
+  "name": "Supply Planner",
+  "company": { "name": "Fictional Amber Studio", "identifier": "FictionalAmber" },
+  "location": { "city": "Guadalajara", "region": "Jalisco", "country": "mx", "remote": false },
+  "releasedDate": "2026-10-02T16:33:35.154Z",
+  "jobAd": { "sections": {
+    "companyDescription": { "title": "Company Description", "text": "<p>An invented studio.</p>" },
+    "jobDescription": { "title": "Job Description", "text": "<p>Plan fictional supplies.</p>" },
+    "qualifications": { "title": "Qualifications", "text": "" }
+  } }
+}

@@ -56,8 +56,9 @@ export function isOAuthProvider(value: string): value is OAuthProvider {
 }
 
 // Only same-site relative paths are ever used as post-login destinations.
+// Only known in-app pages: never an arbitrary path or another origin.
 export function safeNextPath(value: string | null | undefined) {
-  return value === "/documents" ? value : "/";
+  return value === "/documents" || value === "/capture" ? value : "/";
 }
 
 export const OAUTH_STATE_COOKIE = "jobpilot_oauth";

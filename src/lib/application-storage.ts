@@ -58,11 +58,13 @@ export async function saveApplicationFiles(userId: string, applicationId: string
   }));
 }
 
-export async function saveCompanyLogo(userId: string, applicationId: string, logoUrl: string | null) {
+// Logos may come from known CDNs or from the same site as the job page.
+export async function saveCompanyLogo(userId: string, applicationId: string, logoUrl: string | null, pageUrl?: string | null) {
   if (!logoUrl) return;
   let pendingPath: string | undefined;
   try {
-    const response = await safeFetch(logoUrl, "image", MAX_COMPANY_LOGO_BYTES);
+    const pageHost = pageUrl ? new URL(pageUrl).hostname : undefined;
+    const response = await safeFetch(logoUrl, "image", MAX_COMPANY_LOGO_BYTES, { imageHosts: pageHost ? [pageHost] : [] });
     const image = await verifiedImage(response.buffer);
 
     const relativePath = path.join(userId, applicationId, `${randomUUID()}${image.extension}`);

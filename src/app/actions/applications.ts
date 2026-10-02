@@ -11,9 +11,10 @@ import { requireUser } from "@/lib/auth";
 import { consumeRateLimit } from "@/lib/backend-limits";
 import { webUrlSchema } from "@/lib/backend-validation";
 import { prisma } from "@/lib/db";
-import { emptyExtractJobState, extractFromHtml, failedExtract, normalizeJobUrl, type ExtractJobState } from "@/lib/job-import";
+import { capturedPostingSchema, capturedPostingValues } from "@/lib/job-capture";
+import { fetchJobPosting } from "@/lib/job-fetch";
+import { emptyExtractJobState, failedExtract, normalizeJobUrl, type ExtractJobState } from "@/lib/job-import";
 import { jobIdFromUrl } from "@/lib/job-id";
-import { safeFetch } from "@/lib/safe-fetch";
 import { withUploadBatch } from "@/lib/upload-batch";
 import { applicationSchema, applicationValidationMessage, nullable, value } from "./form-data";
 
@@ -35,26 +36,38 @@ export async function extractJobPost(
   }
 
   const normalizedUrl = normalizeJobUrl(parsedUrl.data);
+  const posting = await fetchJobPosting(normalizedUrl);
 
-  try {
-    const response = await safeFetch(normalizedUrl, "html", 2 * 1024 * 1024);
-    const html = response.buffer.toString("utf8");
-    const extracted = extractFromHtml(html, normalizedUrl);
-    const foundAny = Object.values(extracted).some((item) => item.length > 0);
-
-    return {
-      message: foundAny
-        ? "Autofill found some details. Review them and fill anything missing."
-        : "Could not read useful details from that page. Fill the missing fields below.",
-      values: {
-        ...extracted,
-        jobUrl: normalizedUrl,
-        jobId: extracted.jobId || jobIdFromUrl(normalizedUrl),
-      },
-    };
-  } catch {
-    return failedExtract(normalizedUrl);
+  if (posting.found) {
+    return { message: "Autofill found some details. Review them and fill anything missing.", values: posting.values };
   }
+  if (posting.blocked) {
+    return {
+      message: "That site blocks automated access. Open the posting in your browser and use Save to JobPilot, or fill the fields below.",
+      blocked: true,
+      values: posting.values,
+    };
+  }
+  if (posting.failed) return failedExtract(normalizedUrl);
+  return { message: "Could not read useful details from that page. Fill the missing fields below.", values: posting.values };
+}
+
+// Receives what the Save to JobPilot bookmarklet read from a job page in the
+// user's browser, for sites that block server-side autofill.
+export async function importCapturedPosting(payload: unknown): Promise<ExtractJobState> {
+  const user = await requireUser();
+  if (!await consumeRateLimit(`capture:${user.id}`, 60, 60 * 60 * 1000)) return { ...emptyExtractJobState, message: "Capture limit reached. Try again later." };
+  const parsed = capturedPostingSchema.safeParse(payload);
+  if (!parsed.success) return { ...emptyExtractJobState, message: "That capture could not be read. Click Save to JobPilot on the job page again." };
+
+  const values = capturedPostingValues(parsed.data);
+  const found = Boolean(values.company || values.role || values.jobDescription);
+  return {
+    message: found
+      ? `Saved from ${new URL(values.jobUrl).hostname}. Review the details and fill anything missing.`
+      : "The page did not show job details JobPilot could read. Select the job description on the page before clicking Save to JobPilot, or fill the fields below.",
+    values,
+  };
 }
 
 export async function createApplication(formData: FormData) {
@@ -117,7 +130,7 @@ export async function createApplication(formData: FormData) {
     select: { id: true },
     });
   }));
-  await saveCompanyLogo(user.id, application.id, nullable(parsed.data.companyLogoUrl));
+  await saveCompanyLogo(user.id, application.id, nullable(parsed.data.companyLogoUrl), nullable(parsed.data.jobUrl));
 
   revalidatePath("/");
   return { success: true, message: "Application created." };
@@ -210,12 +223,12 @@ export async function refreshCompanyLogo(applicationId: string) {
     select: { id: true, jobUrl: true },
   });
 
-  if (!application?.jobUrl) return { success: false, message: "Add a supported job URL first." };
+  if (!application?.jobUrl) return { success: false, message: "Add a job URL first." };
 
   try {
-    const response = await safeFetch(normalizeJobUrl(application.jobUrl), "html", 2 * 1024 * 1024);
-    const logoUrl = extractFromHtml(response.buffer.toString("utf8"), response.url).companyLogoUrl;
-    if (!await saveCompanyLogo(user.id, application.id, nullable(logoUrl))) return { success: false, message: "No supported logo was found." };
+    const posting = await fetchJobPosting(normalizeJobUrl(application.jobUrl));
+    if (!posting.found) return { success: false, message: "That site could not provide a logo." };
+    if (!await saveCompanyLogo(user.id, application.id, nullable(posting.values.companyLogoUrl), posting.pageUrl)) return { success: false, message: "No supported logo was found." };
   } catch {
     // A blocked job board must not interrupt the application list.
     return { success: false, message: "That site could not provide a logo." };

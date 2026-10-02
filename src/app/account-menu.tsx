@@ -115,6 +115,7 @@ export function AccountMenu({
             </Link>
             {archiveControl}
             <Link href="/settings" className="border border-white/10 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-sky-300/35 hover:bg-sky-400/10" onClick={() => setIsOpen(false)}>Account settings</Link>
+            <Link href="/bookmarklet" className="border border-white/10 px-4 py-3 text-sm font-bold text-slate-200 transition hover:border-sky-300/35 hover:bg-sky-400/10" onClick={() => setIsOpen(false)}>Save to JobPilot button</Link>
             <form action={signOut}>
               <SubmitButton className="w-full border border-rose-400/25 px-4 py-3 text-left text-sm font-bold text-rose-200 transition hover:bg-rose-400/10">
                 Sign out

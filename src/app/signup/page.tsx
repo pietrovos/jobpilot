@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { signUp } from "@/app/actions/auth";
 import { AuthField, AuthShell, AuthSubmit, AuthSwitch, ProviderButtons, authMessage } from "../auth-ui";
 import { getCurrentUser, isGuestUser } from "@/lib/auth";
+import { safeNextPath } from "@/lib/oauth";
 
 type SignupProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -15,6 +16,8 @@ export default async function SignupPage({ searchParams }: SignupProps) {
   }
 
   const params = (await searchParams) ?? {};
+  const nextParam = params.next;
+  const next = safeNextPath(Array.isArray(nextParam) ? nextParam[0] : nextParam);
 
   return (
     <AuthShell
@@ -22,19 +25,20 @@ export default async function SignupPage({ searchParams }: SignupProps) {
       subtitle={isGuestUser(user) ? "Create an account to keep the applications from this guest session." : "Set up JobPilot before tracking your applications."}
       message={authMessage(params.auth ?? params.oauth)}
     >
-      <ProviderButtons />
+      <ProviderButtons next={next === "/" ? undefined : next} />
       <div className="my-5 flex items-center gap-3 text-xs font-black uppercase tracking-[0.2em] text-slate-600">
         <span className="h-px flex-1 bg-white/10" />
         or
         <span className="h-px flex-1 bg-white/10" />
       </div>
       <form action={signUp} className="grid gap-4">
+        <input type="hidden" name="next" value={next} />
         <AuthField name="name" label="Name" placeholder="Ada Lovelace" />
         <AuthField name="email" label="Email" type="email" placeholder="you@example.com" />
         <AuthField name="password" label="Password" type="password" placeholder="At least 8 characters" />
         <AuthSubmit>Create account</AuthSubmit>
       </form>
-      <AuthSwitch href="/login">Already have an account? Log in</AuthSwitch>
+      <AuthSwitch href={next === "/" ? "/login" : `/login?next=${encodeURIComponent(next)}`}>Already have an account? Log in</AuthSwitch>
     </AuthShell>
   );
 }

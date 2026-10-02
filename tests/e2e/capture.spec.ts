@@ -1,0 +1,50 @@
+import { expect, test, type Page } from "@playwright/test";
+
+// An invented posting laid out like a site that blocks server-side fetches.
+const jobPage = `<!doctype html><html><head><title>Developer Experience Engineer - Remote | Fictional Board</title></head>
+<body><main>
+  <h1>Developer Experience Engineer</h1>
+  <div data-testid="inlineHeader-companyName">Fictional Signal Bakery</div>
+  <div data-testid="inlineHeader-companyLocation">Remote, Canada</div>
+  <div id="jobDescriptionText"><p>Improve invented developer tools.</p><ul><li>TypeScript</li><li>Documentation</li></ul></div>
+</main></body></html>`;
+
+async function bookmarkletCode(page: Page) {
+  await page.goto("/bookmarklet");
+  const link = page.getByTestId("bookmarklet");
+  await expect(link).toHaveAttribute("href", /^javascript:/);
+  const href = (await link.getAttribute("href"))!;
+  return decodeURIComponent(href.slice("javascript:".length));
+}
+
+test("Save to JobPilot captures a blocked job page, survives login and prefills the form", async ({ page, context }) => {
+  const code = await bookmarkletCode(page);
+  await context.route("https://jobs.fictional.test/**", (route) => route.fulfill({ contentType: "text/html", body: jobPage }));
+  await page.goto("https://jobs.fictional.test/viewjob?jk=f1c71a0a5e");
+
+  const popupPromise = context.waitForEvent("page");
+  await page.evaluate(code);
+  const popup = await popupPromise;
+
+  // Signed out: the capture is kept while the user logs in or continues as a guest.
+  await expect(popup).toHaveURL(/\/login\?next=%2Fcapture|\/login\?next=\/capture/);
+  await popup.getByRole("button", { name: "Continue as guest" }).click();
+  await expect(popup).toHaveURL("http://localhost:3100/capture");
+
+  const dialog = popup.getByRole("dialog", { name: "Add application" });
+  await expect(dialog.getByText("Saved from jobs.fictional.test")).toBeVisible();
+  await expect(dialog.getByLabel("Company", { exact: true })).toHaveValue("Fictional Signal Bakery");
+  await expect(dialog.getByLabel("Role", { exact: true })).toHaveValue("Developer Experience Engineer");
+  await expect(dialog.getByLabel("Location", { exact: true })).toHaveValue("Remote, Canada");
+  await expect(dialog.getByLabel("Job ID (optional)", { exact: true })).toHaveValue("f1c71a0a5e");
+
+  await dialog.getByRole("button", { name: "Save application" }).click();
+  await expect(popup).toHaveURL("http://localhost:3100/");
+  await expect(popup.getByText("Fictional Signal Bakery").first()).toBeVisible();
+});
+
+test("opening the capture page without a capture explains how to use the button", async ({ page }) => {
+  await page.goto("/capture");
+  await expect(page.getByText("Nothing was captured.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Save to JobPilot" })).toHaveAttribute("href", "/bookmarklet");
+});

@@ -1,0 +1,11 @@
+{
+  "id": "6ed76ce8-4156-4b60-b120-403538bd66cd",
+  "text": "Data Engineer",
+  "categories": { "commitment": "Full-time", "location": "Montreal, QC", "team": "Data" },
+  "workplaceType": "remote",
+  "createdAt": 1785369600000,
+  "salaryRange": { "currency": "CAD", "interval": "per-year-salary", "min": 110000, "max": 130000 },
+  "description": "<div>Fictional Paper Kite builds invented maps.</div>",
+  "lists": [{ "text": "What you will do", "content": "<li>Model data</li><li>Ship pipelines</li>" }],
+  "additional": "<div>This posting is fictional.</div>"
+}

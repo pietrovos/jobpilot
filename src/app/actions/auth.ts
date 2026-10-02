@@ -14,6 +14,7 @@ import { transferGuestOwnership } from "@/lib/guest-transfer";
 import { adoptGuestWorkspace } from "@/lib/oauth-session";
 import { profileUploadsRoot } from "@/lib/upload-roots";
 import { verifiedImage } from "@/lib/verified-upload";
+import { safeNextPath } from "@/lib/oauth";
 import { authSchema, value } from "./form-data";
 
 // Compared against for unknown or passwordless accounts to keep timing uniform.
@@ -50,7 +51,7 @@ export async function signUp(formData: FormData) {
   });
 
   await createSession(user.id);
-  redirect("/");
+  redirect(safeNextPath(value(formData, "next")));
 }
 
 export async function signIn(formData: FormData) {
@@ -81,14 +82,15 @@ export async function signIn(formData: FormData) {
   }
 
   await createSession(user.id);
-  redirect("/");
+  redirect(safeNextPath(value(formData, "next")));
 }
 
-export async function continueAsGuest() {
-  if (await getCurrentUser()) redirect("/");
+export async function continueAsGuest(formData: FormData) {
+  const next = safeNextPath(value(formData, "next"));
+  if (await getCurrentUser()) redirect(next);
   if (!await consumeAuthRateLimit("guest")) redirect("/login?auth=rate-limited");
   await createGuestSession();
-  redirect("/");
+  redirect(next);
 }
 
 export async function signOut() {

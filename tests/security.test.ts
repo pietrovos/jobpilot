@@ -9,10 +9,21 @@ import { verifyUpload } from "../src/lib/verified-upload";
 import { privateFileResponse } from "../src/lib/private-file";
 
 test("remote fetching fails closed for unsafe hosts, schemes, credentials and ports", () => {
-  for (const url of ["http://www.linkedin.com/jobs", "https://127.0.0.1", "https://www.linkedin.com.evil.test", "https://user:pass@www.linkedin.com", "https://www.linkedin.com:8443", "https://[::1]", "file:///etc/passwd"]) {
+  for (const url of ["http://www.linkedin.com/jobs", "https://localhost/jobs", "https://user:pass@www.linkedin.com", "https://www.linkedin.com:8443", "https://[::1]", "file:///etc/passwd", `https://example.com/${"a".repeat(2050)}`]) {
     assert.throws(() => allowedFetchUrl(url, "html"), url);
   }
+  // Any public HTTPS page is allowed; the resolved address is checked when connecting.
+  assert.equal(allowedFetchUrl("https://careers.example.com/jobs/123", "html").hostname, "careers.example.com");
   assert.equal(allowedFetchUrl("https://www.linkedin.com/jobs/view/123", "html").hostname, "www.linkedin.com");
+  // JSON only from provider APIs, images only from logo CDNs or the job page's site.
+  assert.equal(allowedFetchUrl("https://boards-api.greenhouse.io/v1/boards/x/jobs/1", "json").hostname, "boards-api.greenhouse.io");
+  assert.equal(allowedFetchUrl("https://acme.wd5.myworkdayjobs.com/wday/cxs/acme/x/job/y", "json").hostname, "acme.wd5.myworkdayjobs.com");
+  for (const url of ["https://example.com/api.json", "https://myworkdayjobs.com/x", "https://acme.myworkdayjobs.com.evil.test/x"]) {
+    assert.throws(() => allowedFetchUrl(url, "json"), url);
+  }
+  assert.throws(() => allowedFetchUrl("https://cdn.example.com/logo.png", "image"));
+  assert.equal(allowedFetchUrl("https://cdn.acme.co.uk/logo.png", "image", { imageHosts: ["careers.acme.co.uk"] }).hostname, "cdn.acme.co.uk");
+  assert.throws(() => allowedFetchUrl("https://other.co.uk/logo.png", "image", { imageHosts: ["careers.acme.co.uk"] }));
   for (const ip of ["127.0.0.1", "10.1.2.3", "169.254.169.254", "172.16.0.1", "192.168.0.1", "100.64.0.1", "198.18.0.1", "::1", "::ffff:127.0.0.1"]) assert.equal(isPublicAddress(ip), false, ip);
   assert.equal(isPublicAddress("8.8.8.8"), true);
 });

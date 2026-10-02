@@ -2,6 +2,8 @@ import { jobIdFromPosting, jobIdFromUrl } from "@/lib/job-id";
 
 export type ExtractJobState = {
   message: string;
+  // Set when the site answered with a bot check or login wall instead of the posting.
+  blocked?: boolean;
   values: {
     company: string;
     role: string;
@@ -32,6 +34,21 @@ export const emptyExtractJobState: ExtractJobState = {
   },
 };
 
+export type JobValues = ExtractJobState["values"];
+
+const MAX_DESCRIPTION_LENGTH = 12000;
+
+// Earlier sources win; later ones only fill fields that are still empty.
+export function mergeJobValues(...sources: Partial<JobValues>[]): JobValues {
+  const merged = { ...emptyExtractJobState.values };
+  for (const source of sources) {
+    for (const key of Object.keys(merged) as (keyof JobValues)[]) {
+      if (!merged[key] && source[key]) merged[key] = source[key]!;
+    }
+  }
+  return merged;
+}
+
 export function failedExtract(jobUrl: string): ExtractJobState {
   return {
     ...emptyExtractJobState,
@@ -58,49 +75,98 @@ export function normalizeJobUrl(jobUrl: string) {
   return jobUrl;
 }
 
-export function extractFromHtml(html: string, jobUrl: string) {
+export function extractFromHtml(html: string, jobUrl: string): JobValues {
   const jsonLd = extractJsonLdJobPosting(html);
   const structuredTitle = stringValue(jsonLd?.title);
   const pageTitle = metaContent(html, "og:title") || tagText(html, "title");
   const title = structuredTitle || pageTitle;
 
-  if (isBlockedOrLoginPage(title)) {
+  if (isBlockedPage(html)) {
     return { ...emptyExtractJobState.values, jobUrl, jobId: jobIdFromUrl(jobUrl) };
   }
 
   const linkedInDetails = parseLinkedInTitle(pageTitle || title);
+  const topCard = linkedInTopCard(html);
   const company =
     organizationName(jsonLd?.hiringOrganization) ||
     linkedInDetails.company ||
+    topCard.company ||
     usableSiteName(metaContent(html, "og:site_name")) ||
-    companyFromTitle(title);
+    usableSiteName(companyFromTitle(title)) ||
+    companyFromHost(jobUrl);
   const companyLogoUrl =
     organizationLogoUrl(jsonLd?.hiringOrganization, jobUrl) || companyLogoFromHtml(html, jobUrl, company);
-  const location = jobLocation(jsonLd?.jobLocation) || linkedInDetails.location || linkedInLocation(html);
-  const salary = salaryText(jsonLd?.baseSalary) || linkedInSalary(html);
+  const location = jobLocation(jsonLd?.jobLocation) || remoteLocation(jsonLd) || linkedInDetails.location || linkedInLocation(html);
+  const salary = salaryText(jsonLd?.baseSalary) || salaryText(firstItem(jsonLd?.estimatedSalary)) || linkedInSalary(html);
   const postedAt = datePosted(jsonLd?.datePosted) || linkedInPostedAt(html);
-  const description = linkedInDescription(html) || stringValue(jsonLd?.description) || metaContent(html, "description") || metaContent(html, "og:description");
+  const description = linkedInDescription(html) || stringValue(jsonLd?.description) || mainText(html) || metaContent(html, "description") || metaContent(html, "og:description");
 
   return {
     company: clean(company),
-    role: clean(linkedInDetails.role || structuredTitle || roleFromTitle(title, company) || ""),
+    role: withoutApplyPrefix(clean(linkedInDetails.role || structuredTitle || topCard.role || tagText(html, "h1") || roleFromTitle(title, company) || "")),
     location: clean(location),
     salary: clean(salary),
     jobUrl,
     jobId: jobIdFromUrl(jobUrl) || jobIdFromPosting(jsonLd?.identifier),
     companyLogoUrl,
     jobPostedAt: clean(postedAt),
-    jobDescription: cleanDescription(description),
+    jobDescription: cleanDescription(description).slice(0, MAX_DESCRIPTION_LENGTH),
     notes: "",
   };
 }
 
-function stringValue(value: unknown) {
+export function stringValue(value: unknown) {
   return typeof value === "string" ? value : "";
 }
 
-function isBlockedOrLoginPage(title: string) {
-  return /linkedin\s+login|sign\s+in|log\s+in/i.test(title);
+// Bot checks and login walls served in place of the posting.
+export function isBlockedPage(html: string) {
+  const title = metaContent(html, "og:title") || tagText(html, "title");
+  return /linkedin\s+login|sign\s+in|log\s+in|authenticating|just a moment|attention required|access denied|verify you are human|security check|captcha/i.test(title);
+}
+
+function firstItem(value: unknown) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function remoteLocation(posting: Record<string, unknown> | null) {
+  if (!posting) return "";
+  const remote = String(posting.jobLocationType ?? "").toUpperCase() === "TELECOMMUTE";
+  const requirement = firstItem(posting.applicantLocationRequirements);
+  const area = requirement && typeof requirement === "object" ? stringValue((requirement as Record<string, unknown>).name) : "";
+  return remote ? (area ? `Remote, ${area}` : "Remote") : "";
+}
+
+function withoutApplyPrefix(role: string) {
+  return role.replace(/^(?:job application for|apply for|apply now:?)\s+/i, "");
+}
+
+function linkedInTopCard(html: string) {
+  const role = html.match(/<h[12][^>]+class=["'][^"']*\btopcard__title\b[^"']*["'][^>]*>([\s\S]*?)<\/h[12]>/i)?.[1] ?? "";
+  const company = html.match(/<a[^>]+class=["'][^"']*\btopcard__org-name-link\b[^"']*["'][^>]*>([\s\S]*?)<\/a>/i)?.[1] ?? "";
+  return { role: clean(role), company: clean(company) };
+}
+
+const jobBoardSites = new Set(["linkedin", "indeed", "glassdoor", "ziprecruiter", "greenhouse", "lever", "ashbyhq", "workable", "smartrecruiters", "myworkdayjobs", "icims", "jobvite", "bamboohr"]);
+
+// careers.acme.com and jobs.acme.co.uk both become "Acme"; job boards give nothing.
+export function companyFromHost(jobUrl: string) {
+  try {
+    const labels = new URL(jobUrl).hostname.toLowerCase().split(".").filter((label) => !["www", "careers", "career", "jobs", "job", "apply", "boards"].includes(label));
+    const tlds = labels.length >= 3 && ["co", "com", "org", "net", "ac"].includes(labels[labels.length - 2]) ? 2 : 1;
+    const name = labels[labels.length - 1 - tlds] ?? "";
+    if (!name || jobBoardSites.has(name)) return "";
+    return name.split("-").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+  } catch {
+    return "";
+  }
+}
+
+// Text of the page's main content, for career pages without structured data.
+function mainText(html: string) {
+  const main = html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i)?.[1] ?? html.match(/<article\b[^>]*>([\s\S]*?)<\/article>/i)?.[1] ?? "";
+  const text = cleanDescription(main.replace(/<(script|style|noscript|svg|nav|header|footer|form)\b[\s\S]*?<\/\1>/gi, " "));
+  return text.length >= 200 ? text : "";
 }
 
 function extractJsonLdJobPosting(html: string): Record<string, unknown> | null {
@@ -301,8 +367,11 @@ function datePosted(value: unknown) {
   return typeof value === "string" && value.length > 0 ? formatPostedDate(value) : "";
 }
 
-function formatPostedDate(value: string) {
-  const date = new Date(value);
+// Uses the calendar date the site wrote, so "2026-07-30" never shows as Jul 29
+// on a server west of UTC.
+export function formatPostedDate(value: string) {
+  const day = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  const date = day ? new Date(Date.UTC(Number(day[1]), Number(day[2]) - 1, Number(day[3]))) : new Date(value);
 
   if (Number.isNaN(date.getTime())) {
     return value;
@@ -312,6 +381,7 @@ function formatPostedDate(value: string) {
     month: "short",
     day: "numeric",
     year: "numeric",
+    timeZone: "UTC",
   }).format(date);
 }
 
@@ -327,15 +397,13 @@ function linkedInDescription(html: string) {
   return candidates.sort((left, right) => right.length - left.length)[0] ?? "";
 }
 
-function salaryText(value: unknown): string {
+export function salaryText(value: unknown): string {
   if (!value || typeof value !== "object") return "";
   const record = value as Record<string, unknown>;
   const currency = typeof record.currency === "string" ? record.currency : "";
   const salaryValue = record.value;
-
-  if (!salaryValue || typeof salaryValue !== "object") return "";
-
-  const salaryRecord = salaryValue as Record<string, unknown>;
+  // MonetaryAmountDistribution puts the range on the amount itself.
+  const salaryRecord = salaryValue && typeof salaryValue === "object" ? salaryValue as Record<string, unknown> : record;
   const min = salaryRecord.minValue;
   const max = salaryRecord.maxValue;
   const unit = typeof salaryRecord.unitText === "string" ? salaryRecord.unitText.toLowerCase() : "";
@@ -352,14 +420,14 @@ function salaryText(value: unknown): string {
   return "";
 }
 
-function clean(value: unknown) {
+export function clean(value: unknown) {
   return decodeHtml(String(value ?? ""))
     .replace(/<[^>]*>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-function cleanDescription(value: unknown) {
+export function cleanDescription(value: unknown) {
   return decodeHtml(String(value ?? ""))
     .replace(/<\s*br\s*\/?>/gi, "\n")
     .replace(/<\/(h[1-6])>/gi, "\n\n")
@@ -384,5 +452,12 @@ function decodeHtml(value: string) {
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'");
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&#(\d{1,7});/g, (entity, code: string) => codePoint(Number(code)) ?? entity)
+    .replace(/&#x([0-9a-f]{1,6});/gi, (entity, code: string) => codePoint(Number.parseInt(code, 16)) ?? entity);
+}
+
+function codePoint(code: number) {
+  return code > 0 && code <= 0x10ffff && (code < 0xd800 || code > 0xdfff) ? String.fromCodePoint(code) : undefined;
 }

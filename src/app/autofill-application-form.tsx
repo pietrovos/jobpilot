@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useEffect, useRef, useState, type DragEvent } from "react";
 import { createPortal } from "react-dom";
 import { createApplication, extractJobPost } from "@/app/actions/applications";
@@ -27,17 +28,20 @@ const initialExtractState: ExtractJobState = {
 export function AutofillApplicationForm({
   variant = "panel",
   documents = [],
+  initialState = initialExtractState,
   onAutofillReady,
   onSuccess,
 }: {
   variant?: "panel" | "modal";
   documents?: UserDocumentItem[];
+  // Prefilled values, such as a page captured with the Save to JobPilot bookmarklet.
+  initialState?: ExtractJobState;
   onAutofillReady?: () => void;
   onSuccess?: () => void;
 }) {
   const [extractState, extractAction, isExtracting] = useActionState(
     extractJobPost,
-    initialExtractState,
+    initialState,
   );
   const [linkPulse, setLinkPulse] = useState(false);
   const [manualEntry, setManualEntry] = useState(false);
@@ -90,7 +94,10 @@ export function AutofillApplicationForm({
           </div>
         </div>
         {extractState.message ? (
-          <p role="status" className="mt-2 text-sm font-semibold text-sky-200">{extractState.message}</p>
+          <p role="status" className="mt-2 text-sm font-semibold text-sky-200">
+            {extractState.message}
+            {extractState.blocked ? <> <Link href="/bookmarklet" className="text-sky-300 underline hover:text-sky-100">Set up Save to JobPilot</Link></> : null}
+          </p>
         ) : null}
       </form>
 

@@ -1,0 +1,9 @@
+{
+  "id": 4461450008,
+  "title": "Platform Engineer",
+  "company_name": "Fictional Observatory",
+  "location": { "name": "Toronto, ON" },
+  "first_published": "2026-07-30T13:53:38-04:00",
+  "pay_input_ranges": [{ "min_cents": 12000000, "max_cents": 15000000, "currency_type": "CAD", "title": "Base" }],
+  "content": "&lt;h2&gt;About the role&lt;/h2&gt;&lt;p&gt;Run the fictional telescope&amp;nbsp;platform.&lt;/p&gt;&lt;ul&gt;&lt;li&gt;Go&lt;/li&gt;&lt;li&gt;Kubernetes&lt;/li&gt;&lt;/ul&gt;"
+}

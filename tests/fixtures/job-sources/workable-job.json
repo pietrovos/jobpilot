@@ -1,0 +1,10 @@
+{
+  "shortcode": "F4C096B22E",
+  "title": "Storage Engineer",
+  "remote": true,
+  "location": { "country": "France", "city": "Paris", "region": "Île-de-France" },
+  "published": "2026-07-30T00:00:00.000Z",
+  "description": "<p>Work on invented storage.</p>",
+  "requirements": "<ul><li>Rust</li></ul>",
+  "benefits": "<p>Fictional benefits.</p>"
+}
