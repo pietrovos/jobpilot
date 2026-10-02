@@ -13,11 +13,17 @@
 - Added upload, download, preview, quota, failed-write, document, and attachment
   coverage.
 - Added a deterministic fictional demo seed and a safe capture guide.
+- Split server actions by domain and the application list into feature
+  modules, with the job-page parser and file storage moved into `src/lib`.
+- Added per-account login limits, and per-client auth limits behind a trusted
+  proxy, so one client cannot lock out every login.
+- Added email password reset with single-use, expiring, hashed tokens.
+- Added README screenshots and a walkthrough recorded from the demo seed.
 
 ## Next Improvements
 
-- Measure dashboard performance with representative fixture data, fetch detail
-  records on demand, and split the application list along feature boundaries.
+- Measure dashboard performance with representative fixture data and fetch
+  detail records on demand instead of loading them with the dashboard.
 - Expand action-level cross-account tests for every mutation and private-file
   route, including concurrent edits and retry behavior.
 - Complete a focused accessibility review covering keyboard navigation, focus
@@ -25,8 +31,9 @@
 - Extend responsive browser coverage beyond the primary desktop and mobile
   flows.
 - Add optimistic concurrency handling for simultaneous edits to the same field.
-- Add trusted-proxy request controls and production observability after a host
-  environment is selected.
+- Add email verification for password signups.
+- Keep the account menu beside the logo on narrow phone screens.
+- Add production observability after a host environment is selected.
 
 ## Deployment Follow-Up
 

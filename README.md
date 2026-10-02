@@ -1,17 +1,72 @@
 # JobPilot
 
+[![CI](https://github.com/pietrovos/jobpilot/actions/workflows/ci.yml/badge.svg)](https://github.com/pietrovos/jobpilot/actions/workflows/ci.yml)
+[![Dependency Audit](https://github.com/pietrovos/jobpilot/actions/workflows/security.yml/badge.svg)](https://github.com/pietrovos/jobpilot/actions/workflows/security.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Node 24](https://img.shields.io/badge/node-24.x-339933?logo=node.js&logoColor=white)
+
 JobPilot is a self-hosted job application tracker built with Next.js, Prisma,
 and SQLite. It keeps applications, notes, interviews, email logs, and documents
 in one place. The data stays on the machine or server running the application.
 
-The dashboard supports search, filters, custom sorting, archiving, and recovery
-of deleted applications. Each application has its own status history, notes,
-interview rounds, offer details, and attachments. Documents can also be stored
-once and linked to several applications.
+![Searching applications, opening one, and viewing its interview and notes](docs/images/walkthrough.gif)
 
-You can try the application as a guest before creating an account. Signing up
-moves the guest workspace into the new account in a database transaction, so a
-partial transfer cannot leave records split between owners.
+<sub>All screenshots use the fictional demo seed described in the
+[demo capture guide](docs/demo-capture.md).</sub>
+
+## Features
+
+- Paste a job posting link from LinkedIn, Indeed, Greenhouse, Lever, Ashby,
+  Workable, or SmartRecruiters to fill in the company, role, location, salary,
+  logo, and description
+- Search, filter by status, sort, drag to reorder, and group applications by
+  the day you applied
+- For each application: status history, notes in folders, interview rounds,
+  an email log, offer details, and file attachments
+- A document library, so a resume is stored once and attached to many
+  applications
+- A recycle bin that keeps deleted applications, with everything attached to
+  them, for 30 days
+- Guest mode for trying the app without an account, then keeping the work by
+  signing up
+- Email and password login with password reset, plus optional Google, GitHub,
+  and LinkedIn sign-in
+- Data export and account deletion from settings
+
+| Application details | Interview rounds | Mobile |
+| --- | --- | --- |
+| ![Application detail view with the job description](docs/images/detail.png) | ![Interview rounds with preparation notes](docs/images/interviews.png) | ![Dashboard on a phone](docs/images/mobile.png) |
+
+## Engineering highlights
+
+- Every query is scoped to the signed-in account, and SQLite triggers also
+  reject notes, files, and interviews whose owner differs from their
+  application's owner.
+- Signing up moves the whole guest workspace inside one database transaction,
+  so a failure cannot leave records split between two owners.
+- The job-page importer only fetches HTTPS pages on an allowlist of job sites.
+  It checks every redirect, rejects private addresses, pins the resolved IP,
+  and caps response size and time. The HTML parser is a separate module with
+  its own tests.
+- Images are decoded and re-encoded before they can be previewed, file types
+  are checked by content, and storage quotas are enforced in the database.
+- Deleting an application only marks it. Restoring it brings back its notes,
+  files, interviews, and history unchanged.
+- Playwright runs the main workflows in desktop and mobile Chromium against a
+  production build.
+
+```mermaid
+flowchart LR
+  Browser -->|Server Actions| Actions["src/app/actions/*"]
+  Browser -->|Private file routes| Routes["Route handlers"]
+  Actions --> Lib["src/lib: auth, limits, import, storage"]
+  Routes --> Lib
+  Lib --> Prisma["Prisma client"]
+  Prisma --> SQLite[("SQLite + ownership/quota triggers")]
+  Lib --> Uploads[("uploads/ on local disk")]
+  Lib -->|Pinned HTTPS fetch| JobSites["Job posting sites"]
+  Lib -->|SMTP| Mail["Mail server (optional)"]
+```
 
 ## Running it with Docker
 
@@ -58,6 +113,15 @@ trusted to create a new account, never to attach itself to an existing one;
 connecting a provider to an existing account happens from settings while signed
 in. LinkedIn does not report whether its email is verified, so LinkedIn can only
 create an account, not link to one.
+
+## Password reset
+
+The "Forgot password?" link appears once mail is configured. Set `APP_URL` to
+the public origin, `SMTP_URL` to your provider's SMTP URL, and `MAIL_FROM` to
+the sender address. Reset links are built from `APP_URL` rather than the
+request's Host header. They expire after 30 minutes and work once, and using
+one signs the account out everywhere. For local testing, set `MAIL_OUTBOX` to a
+directory and each message is written there as a JSON file.
 
 ## How it is put together
 
@@ -111,15 +175,21 @@ cookies are HTTP-only and secure. Authenticated database queries and file routes
 check record ownership. SQLite triggers also enforce ownership and storage
 quotas at the database layer.
 
-Uploads have type and size limits. Raster images can be previewed after they are
-decoded and rewritten; PDFs are not sanitized. Authentication, guest creation,
-imports, and uploads have rate limits. Guest workspaces expire after 24 hours,
-and deleted applications remain recoverable for 30 days.
+Login is rate-limited per account. Signup, login, and guest creation are also
+limited globally, or per client once `TRUSTED_PROXY_IP_HEADER` names the header
+your reverse proxy sets. Imports and uploads have rate limits too. Uploads have
+type and size limits. Raster images can be previewed after they are decoded and
+rewritten; PDFs are not sanitized. Guest workspaces expire after 24 hours, and
+deleted applications remain recoverable for 30 days.
 
-Email verification and password recovery are not implemented. Provider sign-in
-verifies control of the provider account, not of the local email address, and
-LinkedIn does not report email verification at all. A real deployment still
+Email verification is not implemented. Provider sign-in verifies control of
+the provider account, not of the local email address, and LinkedIn does not
+report email verification at all. A real deployment still
 needs HTTPS, monitoring, host-level resource limits, and tested backups. SQLite
 and local uploads also rule out ephemeral or multi-replica hosting.
 
 Planned work is listed in [development notes](docs/polish-roadmap.md).
+
+## License
+
+[MIT](LICENSE)
