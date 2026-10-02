@@ -15,10 +15,11 @@ const cutoff = new Date(now.getTime() - 30 * 86400000);
 try {
   const guests = { isGuest: true, createdAt: { lt: dayAgo }, sessions: { none: { expiresAt: { gt: now } } } };
   const expired = { deletedAt: { lte: cutoff } };
-  console.info(JSON.stringify({ event: "cleanup", apply, expiredSessions: await prisma.session.count({ where: { expiresAt: { lte: now } } }), abandonedGuests: await prisma.user.count({ where: guests }), expiredApplications: await prisma.application.count({ where: expired }) }));
+  console.info(JSON.stringify({ event: "cleanup", apply, expiredSessions: await prisma.session.count({ where: { expiresAt: { lte: now } } }), expiredPasswordResets: await prisma.passwordResetToken.count({ where: { expiresAt: { lte: now } } }), abandonedGuests: await prisma.user.count({ where: guests }), expiredApplications: await prisma.application.count({ where: expired }) }));
   if (apply) {
     await prisma.$transaction([
       prisma.session.deleteMany({ where: { expiresAt: { lte: now } } }),
+      prisma.passwordResetToken.deleteMany({ where: { expiresAt: { lte: now } } }),
       prisma.user.deleteMany({ where: guests }),
       prisma.application.deleteMany({ where: expired }),
       prisma.deletedApplication.deleteMany({ where: expired }),

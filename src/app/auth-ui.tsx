@@ -93,6 +93,11 @@ export function authMessage(value: string | string[] | undefined) {
   if (code === "email-not-found") return "There is no account under that email.";
    if (code === "signup-invalid") return "Use a valid name, email, and password of at least 8 characters and at most 72 UTF-8 bytes.";
   if (code === "required") return "Log in before opening your dashboard.";
+  if (code === "reset-sent") return "If that email has an account, a reset link is on its way. It expires in 30 minutes.";
+  if (code === "reset-email-invalid") return "Enter a valid email address.";
+  if (code === "reset-expired") return "That reset link is invalid, already used, or expired. Request a new one.";
+  if (code === "reset-password-invalid") return "Passwords must match and be 8 to 72 UTF-8 bytes long.";
+  if (code === "password-reset") return "Password updated. Log in with your new password.";
 
   return oauthErrorMessage(code);
 }

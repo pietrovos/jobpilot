@@ -1,7 +1,9 @@
 import { redirect } from "next/navigation";
 import { continueAsGuest, signIn } from "@/app/actions/auth";
 import { AuthField, AuthShell, AuthSubmit, AuthSwitch, ProviderButtons, authMessage } from "../auth-ui";
+import Link from "next/link";
 import { getCurrentUser, isGuestUser } from "@/lib/auth";
+import { passwordResetEnabled } from "@/lib/password-reset";
 
 type LoginProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -32,6 +34,11 @@ export default async function LoginPage({ searchParams }: LoginProps) {
       <form action={signIn} className="grid gap-4">
         <AuthField name="email" label="Email" type="email" placeholder="you@example.com" defaultValue={email} />
         <AuthField name="password" label="Password" type="password" autoComplete="current-password" placeholder="Your password" />
+        {passwordResetEnabled() ? (
+          <Link className="-mt-2 justify-self-end text-sm font-semibold text-sky-300 hover:text-sky-200 hover:underline" href="/forgot-password">
+            Forgot password?
+          </Link>
+        ) : null}
         <AuthSubmit>Log in</AuthSubmit>
       </form>
       <div className="my-5 flex items-center gap-3 text-xs font-black uppercase tracking-[0.2em] text-slate-600">

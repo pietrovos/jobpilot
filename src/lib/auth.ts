@@ -6,7 +6,7 @@ import { prisma } from "./db";
 const SESSION_COOKIE = "jobpilot_session";
 const SESSION_DAYS = 30;
 
-function hashToken(token: string) {
+export function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
 
