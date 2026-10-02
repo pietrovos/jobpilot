@@ -27,17 +27,16 @@ database that already contains users.
 
 ## Prepare Screenshot-Only Content
 
-The seed creates four applications in different statuses, but deliberately
-does not create file bytes, notes, or interview records. Before capturing the
-detail and document screens, create a disposable text fixture in the same
-temporary directory:
+The seed creates eight fictional applications across every status, with a
+note, an interview round, and an email on the first one. It does not create
+file bytes. Before capturing the document screens, create a disposable text
+fixture in the same temporary directory:
 
 ```bash
 printf '%s\n' 'Fictional JobPilot portfolio fixture. No personal data.' > "$demo_dir/fictional-resume.txt"
 ```
 
-Upload that file from the Documents page. In one application detail view, add
-a short fictional note or interview round. Do not use a real resume, employer
+Upload that file from the Documents page. Do not use a real resume, employer
 name, email, or meeting link. These additions stay in the disposable database
 and disappear when you complete cleanup below.
 
@@ -47,10 +46,10 @@ If screenshots are needed, use a 1440x900 viewport at 100% browser zoom, a
 fresh browser profile, and a desktop with notifications disabled. A useful set
 would include:
 
-1. The applications dashboard, showing the four fictional records across
+1. The applications dashboard, showing the fictional records across
    different statuses.
-2. An application detail view, showing a status history and the fictional note
-   or interview created above.
+2. An application detail view, showing the seeded note, interview, and status
+   history.
 3. The document library, showing the uploaded fictional text fixture.
 4. Account settings, showing account-management controls without exposing a
    real email address, password, export, or session token.

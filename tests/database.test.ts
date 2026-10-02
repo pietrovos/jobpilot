@@ -45,9 +45,9 @@ test("demo seed requires consent and refuses to overwrite existing data", async 
     const seeded = run("1");
     assert.equal(seeded.status, 0, seeded.stderr);
     assert.equal(await prisma.user.count(), 1);
-    assert.equal(await prisma.application.count(), 4);
+    assert.equal(await prisma.application.count(), 8);
     assert.notEqual(run("1").status, 0);
-    assert.equal(await prisma.application.count(), 4);
+    assert.equal(await prisma.application.count(), 8);
   } finally {
     await prisma.$disconnect();
     db.cleanup();
