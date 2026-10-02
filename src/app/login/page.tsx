@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { continueAsGuest, signIn } from "../actions";
+import { continueAsGuest, signIn } from "@/app/actions/auth";
 import { AuthField, AuthShell, AuthSubmit, AuthSwitch, ProviderButtons, authMessage } from "../auth-ui";
 import { getCurrentUser, isGuestUser } from "@/lib/auth";
 

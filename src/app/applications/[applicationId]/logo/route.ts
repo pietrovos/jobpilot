@@ -2,8 +2,7 @@ import { readFile } from "fs/promises";
 import path from "path";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-
-const companyLogoUploadsRoot = path.join(process.cwd(), "uploads", "company-logos");
+import { companyLogoUploadsRoot } from "@/lib/upload-roots";
 
 export async function GET(
   _request: Request,

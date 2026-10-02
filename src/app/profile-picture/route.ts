@@ -1,8 +1,8 @@
 import { readFile } from "fs/promises";
 import path from "path";
 import { getCurrentUser } from "@/lib/auth";
+import { profileUploadsRoot } from "@/lib/upload-roots";
 
-const profileUploadsRoot = path.join(process.cwd(), "uploads", "profile-pictures");
 const allowedProfileImageTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
 export async function GET() {

@@ -1,33 +1,9 @@
 import { ApplicationStatus } from "@/generated/prisma/enums";
-import {
-  addApplicationNote,
-  addApplicationNoteFolder,
-  addEmailLog,
-  addInterview,
-  attachApplicationDocuments,
-  deleteApplicationNote,
-  deleteApplicationNoteFolder,
-  deleteApplications,
-  deleteApplicationFile,
-  deleteEmailLog,
-  deleteInterview,
-  emptyRecycleBin,
-  permanentlyDeleteApplication,
-  permanentlyDeleteApplications,
-  moveApplicationNote,
-  reorderApplications,
-  refreshCompanyLogo,
-  restoreDeletedApplication,
-  saveOfferDetails,
-  signOut,
-  updateApplication,
-  updateApplicationNote,
-  updateEmailLog,
-  updateInterview,
-  updateApplicationStatus,
-  uploadApplicationFile,
-  uploadProfilePicture,
-} from "./actions";
+import { addApplicationNote, addApplicationNoteFolder, addEmailLog, addInterview, deleteApplicationNote, deleteApplicationNoteFolder, deleteEmailLog, deleteInterview, moveApplicationNote, saveOfferDetails, updateApplicationNote, updateEmailLog, updateInterview } from "@/app/actions/application-records";
+import { refreshCompanyLogo, reorderApplications, updateApplication, updateApplicationStatus } from "@/app/actions/applications";
+import { signOut, uploadProfilePicture } from "@/app/actions/auth";
+import { attachApplicationDocuments, deleteApplicationFile, uploadApplicationFile } from "@/app/actions/files";
+import { deleteApplications, emptyRecycleBin, permanentlyDeleteApplication, permanentlyDeleteApplications, restoreDeletedApplication } from "@/app/actions/recycle-bin";
 import { AccountMenu } from "./account-menu";
 import { AddApplicationDialog } from "./add-application-dialog";
 import { ApplicationFilters } from "./application-filters";

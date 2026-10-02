@@ -2,7 +2,8 @@
 
 import { useActionState, useEffect, useRef, useState, type DragEvent } from "react";
 import { createPortal } from "react-dom";
-import { createApplication, extractJobPost, type ExtractJobState } from "./actions";
+import { createApplication, extractJobPost } from "@/app/actions/applications";
+import type { ExtractJobState } from "@/lib/job-import";
 import type { UserDocumentItem } from "./document-types";
 import { Dialog } from "./ui/dialog";
 import { ActionForm, uploadError } from "./ui/action-form";

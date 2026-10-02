@@ -2,8 +2,7 @@ import { unlink } from "node:fs/promises";
 import path from "node:path";
 import { prisma } from "./db";
 import { transferGuestOwnership } from "./guest-transfer";
-
-const profileUploadsRoot = path.join(process.cwd(), "uploads", "profile-pictures");
+import { profileUploadsRoot } from "./upload-roots";
 
 // Moves a guest workspace into a real account and removes the guest's now
 // unreferenced profile picture, mirroring the password signup flow.

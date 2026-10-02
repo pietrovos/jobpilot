@@ -1,10 +1,7 @@
-import path from "path";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { privateFileHeaders, privateFileResponse } from "@/lib/private-file";
-
-const applicationUploadsRoot = path.join(process.cwd(), "uploads", "application-files");
-const documentUploadsRoot = path.join(process.cwd(), "uploads", "documents");
+import { applicationUploadsRoot, documentUploadsRoot } from "@/lib/upload-roots";
 
 export async function getOwnedFileResponse(fileId: string, disposition: "attachment" | "inline", range?: string | null) {
   const user = await getCurrentUser();

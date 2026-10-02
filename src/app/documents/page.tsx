@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { deleteUserDocument, signOut, uploadProfilePicture, uploadUserDocuments } from "../actions";
+import { signOut, uploadProfilePicture } from "@/app/actions/auth";
+import { deleteUserDocument, uploadUserDocuments } from "@/app/actions/files";
 import { AccountMenu } from "../account-menu";
 import { DocumentsPageContent } from "./documents-page-content";
 import { getCurrentUser } from "@/lib/auth";
