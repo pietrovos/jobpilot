@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useActionState, useEffect, useRef, useState, type DragEvent } from "react";
 import { createPortal } from "react-dom";
@@ -24,6 +25,44 @@ const initialExtractState: ExtractJobState = {
     notes: "",
   },
 };
+
+// Sites with dedicated autofill support. Indeed blocks servers, so it works
+// through the Save to JobPilot bookmark button instead of a pasted link.
+const supportedSites = [
+  { name: "LinkedIn", icon: "linkedin" },
+  { name: "Indeed", icon: "indeed", viaButton: true },
+  { name: "Greenhouse", icon: "greenhouse" },
+  { name: "Lever", icon: "lever" },
+  { name: "Ashby", icon: "ashby" },
+  { name: "Workday", icon: "workday" },
+  { name: "Workable", icon: "workable" },
+  { name: "SmartRecruiters", icon: "smartrecruiters" },
+] as const;
+
+function SupportedSites() {
+  return (
+    <div className="mt-4 grid gap-2 sm:grid-cols-[15rem_1fr] sm:items-start">
+      <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500 sm:pt-1.5">Works with</p>
+      <div>
+        <ul className="flex flex-wrap gap-2" aria-label="Supported job sites">
+          {supportedSites.map((site) => (
+            <li key={site.name} className="flex items-center gap-2 rounded-full border border-white/10 bg-slate-900/70 py-1 pl-1 pr-3 text-xs font-bold text-slate-200">
+              <span className="grid size-6 place-items-center rounded-full bg-white">
+                <Image src={`/job-sites/${site.icon}.png`} alt="" width={16} height={16} className="size-4" />
+              </span>
+              {site.name}
+              {"viaButton" in site ? <span className="font-semibold text-slate-400">*</span> : null}
+            </li>
+          ))}
+        </ul>
+        <p className="mt-2 text-xs font-semibold text-slate-400">
+          Plus most company career pages. *Indeed blocks link autofill; use the{" "}
+          <Link href="/bookmarklet" className="text-sky-300 underline hover:text-sky-100">Save to JobPilot</Link> button on the job page.
+        </p>
+      </div>
+    </div>
+  );
+}
 
 export function AutofillApplicationForm({
   variant = "panel",
@@ -93,6 +132,7 @@ export function AutofillApplicationForm({
             </button>
           </div>
         </div>
+        {hasAutofillResult ? null : <SupportedSites />}
         {extractState.message ? (
           <p role="status" className="mt-2 text-sm font-semibold text-sky-200">
             {extractState.message}
