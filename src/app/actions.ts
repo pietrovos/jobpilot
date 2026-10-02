@@ -15,7 +15,7 @@ import { safeFetch } from "@/lib/safe-fetch";
 import { jobIdFromPosting, jobIdFromUrl } from "@/lib/job-id";
 import { transferGuestOwnership } from "@/lib/guest-transfer";
 import { adoptGuestWorkspace } from "@/lib/oauth-session";
-import { consumeRateLimit } from "@/lib/backend-limits";
+import { consumeAuthRateLimit, consumeRateLimit } from "@/lib/backend-limits";
 import { verifiedImage, verifyUpload } from "@/lib/verified-upload";
 import { withUploadBatch } from "@/lib/upload-batch";
 
@@ -167,7 +167,7 @@ function nullable(value: string | undefined) {
 }
 
 export async function signUp(formData: FormData) {
-  if (!await consumeRateLimit("signup", 20, 60 * 60 * 1000)) redirect("/signup?auth=rate-limited");
+  if (!await consumeAuthRateLimit("signup")) redirect("/signup?auth=rate-limited");
   const guestUser = await getCurrentUser();
   const parsed = authSchema.safeParse({
     name: value(formData, "name"),
@@ -199,7 +199,7 @@ export async function signUp(formData: FormData) {
 }
 
 export async function signIn(formData: FormData) {
-  if (!await consumeRateLimit("login", 100, 15 * 60 * 1000)) redirect("/login?auth=rate-limited");
+  if (!await consumeAuthRateLimit("login", value(formData, "email"))) redirect("/login?auth=rate-limited");
   const guestUser = await getCurrentUser();
   const parsed = authSchema.omit({ name: true }).safeParse({
     email: value(formData, "email"),
@@ -231,7 +231,7 @@ export async function signIn(formData: FormData) {
 
 export async function continueAsGuest() {
   if (await getCurrentUser()) redirect("/");
-  if (!await consumeRateLimit("guest", 30, 60 * 60 * 1000)) redirect("/login?auth=rate-limited");
+  if (!await consumeAuthRateLimit("guest")) redirect("/login?auth=rate-limited");
   await createGuestSession();
   redirect("/");
 }

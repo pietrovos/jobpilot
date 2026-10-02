@@ -25,6 +25,8 @@ The process working directory must be the application release root. Mount `/srv/
 
 Terminate TLS at a trusted reverse proxy and expose only that proxy publicly. Forward the original Host and scheme correctly; Server Actions use origin checks. Do not add wildcard allowed origins. Production session cookies are Secure and require HTTPS outside localhost.
 
+The app rate-limits sign-in per account. Its signup, login, and guest limits are global by default because forwarded headers cannot be trusted from arbitrary clients. Once every request passes through your proxy, set `TRUSTED_PROXY_IP_HEADER` to the header that proxy overwrites with the client address (for example `x-real-ip`); limits then apply per client, with a higher global backstop. Never set it when the app is reachable without the proxy.
+
 Apply request timeouts, connection limits, and rate limits, particularly to signup/login, guest creation, uploads, and URL-import operations. The app permits a 32 MiB Server Action body, providing multipart headroom above the 30 MiB accepted file payload. Keep the proxy limit aligned and test actual uploads. Avoid caching authenticated pages or private downloads. Basic security headers are configured in Next; a restrictive application-wide CSP needs review of current scripts/styles and external resources rather than a blind default.
 
 ## Backup And Recovery
