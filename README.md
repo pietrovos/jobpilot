@@ -9,10 +9,11 @@ JobPilot is a self-hosted job application tracker built with Next.js, Prisma,
 and SQLite. It keeps applications, notes, interviews, email logs, and documents
 in one place. The data stays on the machine or server running the application.
 
-![Searching applications, opening one, and viewing its interview and notes](docs/images/walkthrough.gif)
+![Scrolling the dashboard, searching for an application, and opening its job description](docs/images/walkthrough.gif)
 
-<sub>All screenshots use the fictional demo seed described in the
-[demo capture guide](docs/demo-capture.md).</sub>
+<sub>The walkthrough and the mobile screenshot show my own job search. The
+application detail and interview screenshots use the fictional demo seed
+described in the [demo capture guide](docs/demo-capture.md).</sub>
 
 ## Features
 
