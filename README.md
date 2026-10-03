@@ -26,6 +26,8 @@ described in the [demo capture guide](docs/demo-capture.md).</sub>
   such as Indeed. It reads the posting from the page open in your browser.
 - Search, filter by status, sort, drag to reorder, and group applications by
   the day you applied
+- Three dashboard layouts: detailed cards, a compact list, and a board with a
+  column per status where dragging a card changes its status
 - For each application: status history, notes in folders, interview rounds,
   an email log, offer details, and file attachments
 - A document library, so a resume is stored once and attached to many

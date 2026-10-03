@@ -13,6 +13,9 @@ import { RecycleBin } from "./recycle-bin";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import Link from "next/link";
+import { cookies } from "next/headers";
+import { LAYOUT_COOKIE, parseLayout } from "./application-layouts";
+import { LayoutSwitch } from "./layout-switch";
 import { redirect } from "next/navigation";
 
 const statusLabels: Record<ApplicationStatus, string> = {
@@ -44,6 +47,7 @@ export default async function Home({ searchParams }: HomeProps) {
     redirect("/login");
   }
 
+  const layout = parseLayout((await cookies()).get(LAYOUT_COOKIE)?.value);
   const q = single(params.q).trim();
   const status = single(params.status);
   const profileMessage = single(params.profile) === "invalid"
@@ -179,6 +183,8 @@ export default async function Home({ searchParams }: HomeProps) {
                 <h1 className="text-2xl font-black">Applications</h1>
                 <AddApplicationDialog documents={documentItems} />
               </div>
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+              <LayoutSwitch layout={layout} />
               <ApplicationFilters
                 q={q}
                 status={validStatus ?? ""}
@@ -189,6 +195,7 @@ export default async function Home({ searchParams }: HomeProps) {
                   label: statusLabels[item],
                 }))}
               />
+              </div>
             </div>
 
             <ApplicationList
@@ -210,6 +217,7 @@ export default async function Home({ searchParams }: HomeProps) {
               refreshCompanyLogo={refreshCompanyLogo}
               saveOfferDetails={saveOfferDetails}
               sortMode={sort}
+              layout={layout}
               canReorder={applicationCount <= pageSize && !q && !validStatus}
               updateApplication={updateApplication}
               updateApplicationNote={updateApplicationNote}

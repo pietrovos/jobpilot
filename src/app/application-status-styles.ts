@@ -202,3 +202,18 @@ export function withoutBorderClasses(className: string) {
     .filter((item) => item !== "border" && !item.startsWith("border-"))
     .join(" ");
 }
+
+// Board layout: column headings and the highlight while a card is dragged over them.
+export const boardHeadingStyles: Record<ApplicationStatus, string> = {
+  APPLIED: "text-blue-200",
+  INTERVIEWING: "text-fuchsia-200",
+  OFFER: "text-orange-200",
+  REJECTED: "text-rose-200",
+};
+
+export const boardDropStyles: Record<ApplicationStatus, string> = {
+  APPLIED: "border-blue-300/70 bg-blue-500/10",
+  INTERVIEWING: "border-fuchsia-300/70 bg-fuchsia-500/10",
+  OFFER: "border-orange-300/70 bg-orange-500/10",
+  REJECTED: "border-rose-300/70 bg-rose-500/10",
+};

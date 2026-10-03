@@ -17,6 +17,10 @@ export function formatDateTime(date: string, timeZone: string) {
   }).format(new Date(date));
 }
 
+export function formatShortDate(date: string, timeZone: string) {
+  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric", timeZone }).format(new Date(date));
+}
+
 export function formatApplicationDay(date: string, timeZone: string) {
   return new Intl.DateTimeFormat("en", { weekday: "long", month: "long", day: "numeric", year: "numeric", timeZone }).format(new Date(date));
 }
