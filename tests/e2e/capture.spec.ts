@@ -43,6 +43,30 @@ test("Save to JobPilot captures a blocked job page, survives login and prefills 
   await expect(popup.getByText("Fictional Signal Bakery").first()).toBeVisible();
 });
 
+test("Save to JobPilot captures only the job description, not the whole page", async ({ page, context }) => {
+  const code = await bookmarkletCode(page);
+  await page.goto("/login");
+  await page.getByRole("button", { name: "Continue as guest" }).click();
+  await expect(page).toHaveURL("http://localhost:3100/");
+  await context.route("https://jobs.fictional.test/**", (route) => route.fulfill({ contentType: "text/html", body: `<!doctype html><html><head><title>Cloud Engineer | Fictional Vertex | LinkedIn</title></head><body><main>
+    <div>Jobs based on your preferences. 99+ results. Back End Developer. Frontend Developer. Many unrelated job cards.</div>
+    <h1>Cloud Engineer</h1>
+    <div data-testid="inlineHeader-companyName">Fictional Vertex</div>
+    <div data-testid="inlineHeader-companyLocation">Kanata, ON (Hybrid)</div>
+    <div class="jobs-description-content__text"><p>Seeking a Cloud Engineer with GCP, Java/Python, Kubernetes, and CI/CD.</p></div>
+    <div>More unrelated page footer links and recommendations.</div>
+  </main></body></html>` }));
+  await page.goto("https://jobs.fictional.test/jobs/view/4470712481/");
+
+  const popupPromise = context.waitForEvent("page");
+  await page.evaluate(code);
+  const popup = await popupPromise;
+  const dialog = popup.getByRole("dialog", { name: "Add application" });
+  const description = dialog.getByLabel("Job description", { exact: true });
+  await expect(description).toHaveValue(/Seeking a Cloud Engineer with GCP/);
+  await expect(description).not.toHaveValue(/Jobs based on your preferences/);
+});
+
 test("opening the capture page without a capture explains how to use the button", async ({ page }) => {
   await page.goto("/capture");
   await expect(page.getByText("Nothing was captured.")).toBeVisible();

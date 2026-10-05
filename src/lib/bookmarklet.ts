@@ -7,8 +7,21 @@ const captureScript = `(() => {
   const text = (el) => ((el && el.innerText) || "").trim();
   const pick = (selectors) => {
     for (const selector of selectors) {
-      const value = text(document.querySelector(selector));
-      if (value) return value;
+      for (const el of document.querySelectorAll(selector)) {
+        const value = text(el);
+        if (value) return value;
+      }
+    }
+    return "";
+  };
+  // Only accept a description container long enough to be the real posting, so a
+  // tiny stray match cannot win over the actual job description.
+  const pickLong = (selectors, minLength) => {
+    for (const selector of selectors) {
+      for (const el of document.querySelectorAll(selector)) {
+        const value = text(el);
+        if (value.length >= minLength) return value;
+      }
     }
     return "";
   };
@@ -31,6 +44,29 @@ const captureScript = `(() => {
     .filter((json) => /jobposting/i.test(json) && json.length <= 20000)
     .slice(0, 3);
   const selection = String(getSelection() || "").trim();
+  // A user selection is deliberate, so trust it; otherwise read only a container
+  // that is actually a job description. Broad elements like main/article are
+  // deliberately excluded: they captured whole pages and hid the real posting.
+  const description = selection.length >= 80 ? selection : pickLong([
+    "#jobDescriptionText",
+    "[data-testid='jobsearch-JobComponent-description']",
+    "[data-automation-id='jobPostingDescription']",
+    "[data-automation-id*='jobPostingDescription']",
+    "#job-details",
+    "[class*='jobs-description-content']",
+    "[class*='jobs-description__content']",
+    "[class*='jobs-box__html-content']",
+    ".show-more-less-html__markup",
+    "[class*='description__text']",
+    "[class*='job__description']",
+    "#app_body",
+    "[data-testid*='jobDescription']",
+    "[data-testid*='job-description']",
+    "[id*='job-description']",
+    "[id*='jobDescription']",
+    "[class*='jobDescription']",
+    "[class*='job-description']",
+  ], 40);
   const payload = {
     v: 1,
     url: location.href.slice(0, 2048),
@@ -38,7 +74,7 @@ const captureScript = `(() => {
     h1: text(document.querySelector("h1")).slice(0, 300),
     company: (pick([".job-details-jobs-unified-top-card__company-name", ".jobs-unified-top-card__company-name", "[data-testid='inlineHeader-companyName']", "[data-company-name]", ".topcard__org-name-link"]) || companyNearHeading()).slice(0, 200),
     location: pick(["[data-testid='inlineHeader-companyLocation']", "[data-testid='job-location']", ".job-details-jobs-unified-top-card__tertiary-description-container", ".job-details-jobs-unified-top-card__bullet", ".topcard__flavor--bullet"]).slice(0, 200),
-    description: (selection || pick(["#jobDescriptionText", "#job-details", ".jobs-description__content", ".show-more-less-html__markup", "[data-testid='jobsearch-JobComponent-description']", "main", "article", "[role='main']"])).slice(0, 20000),
+    description: description.slice(0, 20000),
     meta,
     ld,
   };
