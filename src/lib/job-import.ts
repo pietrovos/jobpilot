@@ -4,6 +4,8 @@ export type ExtractJobState = {
   message: string;
   // Set when the site answered with a bot check or login wall instead of the posting.
   blocked?: boolean;
+  // Set when the user already has an application with this job ID on this site.
+  alreadySaved?: boolean;
   values: {
     company: string;
     role: string;
@@ -64,7 +66,9 @@ export function failedExtract(jobUrl: string): ExtractJobState {
 export function normalizeJobUrl(jobUrl: string) {
   const url = new URL(jobUrl);
 
-  if (["linkedin.com", "www.linkedin.com"].includes(url.hostname) && url.pathname.includes("/jobs/search-results")) {
+  // Search, collection and recommendation pages all point at the open posting with
+  // currentJobId; the bookmarklet captures whichever one the user is browsing.
+  if (["linkedin.com", "www.linkedin.com"].includes(url.hostname) && url.pathname.startsWith("/jobs/") && !url.pathname.startsWith("/jobs/view/")) {
     const currentJobId = url.searchParams.get("currentJobId");
 
     if (currentJobId && /^\d+$/.test(currentJobId)) {

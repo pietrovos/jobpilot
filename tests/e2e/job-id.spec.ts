@@ -15,5 +15,5 @@ test("a saved job link fills its ID and shows the source in details", async ({ p
   await page.getByRole("button", { name: "View details", exact: true }).click();
   const details = page.getByRole("dialog", { name: "Example Co application details" });
   await details.getByRole("button", { name: "Additional details", exact: true }).click();
-  await expect(details.getByRole("group", { name: "Job ID" })).toContainText("abc123def (indeed)");
+  await expect(details.getByRole("group", { name: "Job ID" })).toContainText("abc123def (Indeed)");
 });

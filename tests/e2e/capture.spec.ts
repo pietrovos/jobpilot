@@ -90,3 +90,27 @@ test("Save to JobPilot finds the company from the profile link beside the job ti
   await expect(dialog.getByLabel("Company", { exact: true })).toHaveValue("Fictional Vertex");
   await expect(dialog.getByLabel("Role", { exact: true })).toHaveValue("Cloud Engineer");
 });
+
+test("Save to JobPilot shows the job site beside the ID and refuses a job already saved", async ({ page, context }) => {
+  const code = await bookmarkletCode(page);
+  await page.goto("/login");
+  await page.getByRole("button", { name: "Continue as guest" }).click();
+  await expect(page).toHaveURL("http://localhost:3100/");
+  await context.route("https://jobs.fictional.test/**", (route) => route.fulfill({ contentType: "text/html", body: jobPage }));
+  await page.goto("https://jobs.fictional.test/viewjob?jk=d0bb1e5a7e");
+
+  const firstPromise = context.waitForEvent("page");
+  await page.evaluate(code);
+  const first = await firstPromise;
+  const dialog = first.getByRole("dialog", { name: "Add application" });
+  await expect(dialog.getByLabel("Job ID (optional)", { exact: true })).toHaveValue("d0bb1e5a7e");
+  await expect(dialog.getByText("(fictional)", { exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "Save application" }).click();
+  await expect(first).toHaveURL("http://localhost:3100/");
+
+  const secondPromise = context.waitForEvent("page");
+  await page.evaluate(code);
+  const second = await secondPromise;
+  await expect(second.getByText("You already saved this job: Developer Experience Engineer at Fictional Signal Bakery, job ID d0bb1e5a7e (fictional).")).toBeVisible();
+  await expect(second.getByRole("dialog", { name: "Add application" })).toHaveCount(0);
+});

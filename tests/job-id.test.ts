@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { jobIdFromPosting, jobIdFromUrl, jobIdSource } from "../src/lib/job-id";
+import { jobIdFromPosting, jobIdFromUrl, jobIdSource, jobPlatformName } from "../src/lib/job-id";
 
 test("job IDs come from explicit URL parameters and job paths across sites", () => {
   assert.equal(jobIdFromUrl("https://www.linkedin.com/jobs/search-results/?currentJobId=4429419357&trackingId=abc"), "4429419357");
@@ -18,4 +18,6 @@ test("structured posting identifiers and sources are extracted without guessing"
   assert.equal(jobIdFromPosting({ name: "Example Company" }), "");
   assert.equal(jobIdSource("https://www.linkedin.com/jobs/view/123"), "linkedin");
   assert.equal(jobIdSource("https://boards.greenhouse.io/company/jobs/123"), "greenhouse");
+  assert.equal(jobPlatformName("https://acme.wd5.myworkdayjobs.com/careers/job/123"), "Workday");
+  assert.equal(jobPlatformName("https://jobs.fictional.test/viewjob?jk=abc"), "fictional");
 });

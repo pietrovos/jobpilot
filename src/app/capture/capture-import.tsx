@@ -66,6 +66,17 @@ export function CaptureImport({ signedIn, documents }: { signedIn: boolean; docu
     });
   }, [signedIn]);
 
+  if (result?.alreadySaved) {
+    return (
+      <div className="mx-auto mt-24 max-w-md border border-amber-300/30 bg-slate-950/70 p-6 text-center">
+        <p role="status" className="font-bold text-amber-100">{result.message}</p>
+        <p className="mt-3 text-sm text-slate-400">
+          It was not saved again. <Link href="/" className="text-sky-300 underline">Go to your applications</Link>
+        </p>
+      </div>
+    );
+  }
+
   if (result) {
     return <AddApplicationModal documents={documents} isExpanded initialState={result} onAutofillReady={() => {}} onClose={() => router.push("/")} />;
   }

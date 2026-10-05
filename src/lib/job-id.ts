@@ -36,6 +36,25 @@ export function jobIdSource(jobUrl: string) {
   }
 }
 
+const platformNames: Record<string, string> = {
+  ashbyhq: "Ashby",
+  glassdoor: "Glassdoor",
+  greenhouse: "Greenhouse",
+  indeed: "Indeed",
+  lever: "Lever",
+  linkedin: "LinkedIn",
+  myworkdayjobs: "Workday",
+  smartrecruiters: "SmartRecruiters",
+  workable: "Workable",
+  ziprecruiter: "ZipRecruiter",
+};
+
+// The site name shown beside a job ID, since IDs are only unique within one site.
+export function jobPlatformName(jobUrl: string) {
+  const source = jobIdSource(jobUrl);
+  return platformNames[source] ?? source;
+}
+
 function isJobId(value: string) {
   return value.length >= 3 && value.length <= 120 && /^[a-z\d_-]+$/i.test(value);
 }

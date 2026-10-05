@@ -1,5 +1,5 @@
 import type { ApplicationDetail } from "./application-types";
-import { jobIdSource } from "@/lib/job-id";
+import { jobPlatformName } from "@/lib/job-id";
 
 export function hasDraggedFiles(dataTransfer: DataTransfer) {
   return Array.from(dataTransfer.types).includes("Files");
@@ -33,7 +33,7 @@ export function applicationDay(date: string, timeZone: string) {
 
 export function formatJobId(jobId: string | null, jobUrl: string | null) {
   if (!jobId) return "Not added";
-  const source = jobUrl ? jobIdSource(jobUrl) : "";
+  const source = jobUrl ? jobPlatformName(jobUrl) : "";
   return source ? `${jobId} (${source})` : jobId;
 }
 

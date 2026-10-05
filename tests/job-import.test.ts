@@ -44,6 +44,11 @@ test("login walls and search URLs do not produce invented details", () => {
     normalizeJobUrl("https://www.linkedin.com/jobs/search-results/?currentJobId=1234567890&keywords=engineer"),
     "https://www.linkedin.com/jobs/view/1234567890/",
   );
+  assert.equal(
+    normalizeJobUrl("https://www.linkedin.com/jobs/collections/recommended/?currentJobId=1234567890"),
+    "https://www.linkedin.com/jobs/view/1234567890/",
+  );
+  assert.equal(normalizeJobUrl("https://www.linkedin.com/jobs/view/1234567890/?currentJobId=42"), "https://www.linkedin.com/jobs/view/1234567890/?currentJobId=42");
   assert.equal(normalizeJobUrl("https://jobs.example.test/a?b=1"), "https://jobs.example.test/a?b=1");
   assert.equal(failedExtract("https://jobs.example.test/a").values.jobUrl, "https://jobs.example.test/a");
 });
