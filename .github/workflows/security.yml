@@ -22,4 +22,5 @@ jobs:
         with:
           node-version-file: .nvmrc
       - run: npm ci --ignore-scripts
-      - run: npm audit --audit-level=moderate
+      - run: node --test tests/dependency-audit.test.mjs
+      - run: node scripts/dependency-audit.mjs
