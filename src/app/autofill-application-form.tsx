@@ -2,9 +2,10 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useActionState, useEffect, useRef, useState, type DragEvent } from "react";
+import { useActionState, useEffect, useId, useRef, useState, type DragEvent } from "react";
 import { createPortal } from "react-dom";
 import { createApplication, extractJobPost } from "@/app/actions/applications";
+import { jobPlatformName } from "@/lib/job-id";
 import type { ExtractJobState } from "@/lib/job-import";
 import type { UserDocumentItem } from "./document-types";
 import { Dialog } from "./ui/dialog";
@@ -156,8 +157,7 @@ export function AutofillApplicationForm({
               Example text is shown as placeholder only; replace it with the job&apos;s details.
             </p>
             <Field name="company" label="Company" placeholder="Example: Lakeside Medical" defaultValue={values.company} required />
-            <Field name="jobUrl" label="Job posting link (optional)" type="url" defaultValue={values.jobUrl} />
-            <Field name="jobId" label="Job ID (optional)" placeholder="Example: REQ-12345" defaultValue={values.jobId} />
+            <JobLinkFields jobUrl={values.jobUrl} jobId={values.jobId} />
             <Field
               name="role"
               label="Role"
@@ -249,6 +249,7 @@ function NewApplicationFileDrop() {
   const fileStoreRef = useRef<File[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<Array<{ name: string; size: number }>>([]);
   const [isDragging, setIsDragging] = useState(false);
+  const [previewFile, setPreviewFile] = useState<File | null>(null);
   const totalSize = selectedFiles.reduce((total, file) => total + file.size, 0);
   const isTooLarge = totalSize > 30 * 1024 * 1024;
 
@@ -335,6 +336,17 @@ function NewApplicationFileDrop() {
                   <span className="text-slate-500">{formatFileSize(fileName.size)}</span>
                   <button
                     type="button"
+                    aria-label={`Preview ${fileName.name}`}
+                    className="rounded-full border border-sky-300/30 px-2 py-0.5 text-[0.62rem] font-black text-sky-200 hover:bg-sky-400/10"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      setPreviewFile(fileStoreRef.current[index] ?? null);
+                    }}
+                  >
+                    Preview
+                  </button>
+                  <button
+                    type="button"
                     className="rounded-full border border-rose-400/30 px-2 py-0.5 text-[0.62rem] font-black text-rose-300 hover:bg-rose-400/10"
                     onClick={(event) => {
                       event.preventDefault();
@@ -368,7 +380,75 @@ function NewApplicationFileDrop() {
         <span className="mt-1 block text-xs text-slate-400">10 MB per file maximum.</span>
         {uploadError(selectedFiles) ? <span role="alert" className="block text-sm text-rose-200">{uploadError(selectedFiles)}</span> : null}
       </div>
+      {previewFile ? <LocalFilePreview file={previewFile} onClose={() => setPreviewFile(null)} /> : null}
     </div>
+  );
+}
+
+type PreviewKind = "pdf" | "image" | "text" | null;
+
+// Only formats that cannot run code in the page: a stray .html file must not be
+// opened as a same-origin page through its object URL.
+function previewKind(file: File): PreviewKind {
+  const name = file.name.toLowerCase();
+  if (file.type === "application/pdf" || name.endsWith(".pdf")) return "pdf";
+  if (/^image\/(png|jpeg|webp|gif)$/.test(file.type)) return "image";
+  if (file.type === "text/plain" || /\.(txt|md)$/.test(name)) return "text";
+  return null;
+}
+
+// Previews a file that is attached to the form but not uploaded yet.
+function LocalFilePreview({ file, onClose }: { file: File; onClose: () => void }) {
+  const kind = previewKind(file);
+  const [text, setText] = useState<string | null>(null);
+  const [url, setUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (kind !== "pdf" && kind !== "image") return;
+    // Force the declared type so the browser's PDF or image viewer handles it.
+    const objectUrl = URL.createObjectURL(new Blob([file], { type: kind === "pdf" ? "application/pdf" : file.type }));
+    const show = window.setTimeout(() => setUrl(objectUrl), 0);
+    return () => {
+      window.clearTimeout(show);
+      URL.revokeObjectURL(objectUrl);
+    };
+  }, [file, kind]);
+
+  useEffect(() => {
+    if (kind !== "text") return;
+    let current = true;
+    void file.slice(0, 512 * 1024).text().then((content) => {
+      if (current) setText(content);
+    });
+    return () => {
+      current = false;
+    };
+  }, [file, kind]);
+
+  return createPortal(
+    <Dialog label={`Preview ${file.name}`} onClose={onClose} className="fixed inset-0 z-[80] bg-slate-950/90 p-3 backdrop-blur-sm sm:p-6">
+      <section className="flex h-full w-full flex-col overflow-hidden border border-white/10 bg-slate-950 shadow-2xl shadow-black/50">
+        <div className="flex items-center justify-between gap-3 border-b border-white/10 p-4">
+          <div className="min-w-0">
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-sky-400">File preview</p>
+            <h2 className="mt-1 break-words text-lg font-black text-slate-100">{file.name}</h2>
+          </div>
+          <button type="button" onClick={onClose} className="shrink-0 border border-white/15 px-4 py-2 text-sm font-bold text-slate-200 hover:bg-white/10">
+            Close
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 bg-slate-900/60 p-3">
+          {kind === "pdf" && url ? <iframe src={url} title={file.name} className="h-full w-full border border-white/10 bg-white" /> : null}
+          {kind === "image" && url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={url} alt={file.name} className="mx-auto max-h-full max-w-full object-contain" />
+          ) : null}
+          {kind === "text" ? <pre className="h-full overflow-auto whitespace-pre-wrap break-words p-4 text-sm leading-6 text-slate-200">{text ?? "Loading..."}</pre> : null}
+          {kind === null ? <p className="p-6 text-center text-slate-300">Preview is not available for this file type. PDFs, images, and text files can be previewed.</p> : null}
+        </div>
+      </section>
+    </Dialog>,
+    document.body,
   );
 }
 
@@ -435,6 +515,17 @@ function isPreviewableDocument(document: UserDocumentItem) {
   return ["image/png", "image/jpeg", "image/webp", "image/gif"].includes(document.fileType);
 }
 
+// Job IDs are only unique within one site, so the site is shown beside the ID.
+function JobLinkFields({ jobUrl, jobId }: { jobUrl: string; jobId: string }) {
+  const [url, setUrl] = useState(jobUrl);
+  return (
+    <>
+      <Field name="jobUrl" label="Job posting link (optional)" type="url" defaultValue={jobUrl} onValueChange={setUrl} />
+      <Field name="jobId" label="Job ID (optional)" placeholder="Example: REQ-12345" defaultValue={jobId} suffix={jobPlatformName(url)} />
+    </>
+  );
+}
+
 function Field({
   name,
   label,
@@ -442,6 +533,8 @@ function Field({
   placeholder,
   defaultValue = "",
   required = false,
+  suffix,
+  onValueChange,
 }: {
   name: string;
   label: string;
@@ -449,8 +542,11 @@ function Field({
   placeholder?: string;
   defaultValue?: string;
   required?: boolean;
+  suffix?: string;
+  onValueChange?: (value: string) => void;
 }) {
   const [value, setValue] = useState(defaultValue);
+  const suffixId = useId();
   const isMissing = required && value.trim().length === 0;
 
   return (
@@ -464,10 +560,16 @@ function Field({
         type={type}
         placeholder={placeholder}
         defaultValue={defaultValue}
-        onChange={(event) => setValue(event.target.value)}
+        onChange={(event) => {
+          setValue(event.target.value);
+          onValueChange?.(event.target.value);
+        }}
         required={required}
+        aria-label={suffix ? label : undefined}
+        aria-describedby={suffix ? suffixId : undefined}
         className="new-app-input w-full min-w-0 px-3 py-3 font-normal normal-case tracking-normal"
       />
+      {suffix ? <span id={suffixId} className="text-xs font-bold normal-case tracking-normal text-slate-400">({suffix})</span> : null}
     </label>
   );
 }
