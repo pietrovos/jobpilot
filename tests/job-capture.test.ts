@@ -74,3 +74,36 @@ test("the bookmarklet targets this deployment and its payload round-trips", () =
   const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
   assert.deepEqual(decodeCapturePayload(encoded), payload);
 });
+
+test("government captures name the employer the way people search for it", () => {
+  const jobBank = capturedPostingValues({
+    ...base,
+    url: "https://www.jobbank.gc.ca/jobsearch/jobposting/12345678",
+    ld: [JSON.stringify({ "@type": "JobPosting", title: "software developer", hiringOrganization: { name: "Fictional Export Agency | Agence fictive d'exportation" }, jobLocation: { address: { addressLocality: "Ottawa", addressRegion: "ON" } } })],
+  });
+  assert.equal(jobBank.company, "Fictional Export Agency");
+  assert.equal(jobBank.location, "Ottawa, ON");
+
+  const gcJobs = capturedPostingValues({
+    ...base,
+    url: "https://emploisfp-psjobs.cfp-psc.gc.ca/psrs-srfp/applicant/page1800?poster=1234567&toggleLanguage=en",
+    h1: "Fictional Policy Analyst",
+    company: "Fictional Services Canada - Policy Branch - Planning Division",
+    location: "Ottawa (Ontario)",
+    description: "On this page\nAbout the position\nHow to apply\nAbout the position\nAnalyse invented policies.\nHow to apply\nApply online.",
+  });
+  assert.equal(gcJobs.company, "Fictional Services Canada");
+  assert.equal(gcJobs.role, "Fictional Policy Analyst");
+  assert.equal(gcJobs.jobDescription, "About the position\nAnalyse invented policies.\nHow to apply\nApply online.");
+
+  const ottawa = capturedPostingValues({
+    ...base,
+    url: "https://jobs-emplois.ottawa.ca/city-jobs/job/Fictional-Planner/1234567/",
+    ld: [JSON.stringify({ "@type": "JobPosting", title: "Fictional Planner", hiringOrganization: { name: "CityofOttawa" }, jobLocation: { address: { addressLocality: "Ottawa, ON" } } })],
+  });
+  assert.equal(ottawa.company, "City of Ottawa");
+
+  const cse = capturedPostingValues({ ...base, url: "https://careers.cse-cst.gc.ca/en/careers/fictional-analyst-en", h1: "Fictional Analyst", description: "Study invented signals." });
+  assert.equal(cse.company, "Communications Security Establishment (CSE)");
+  assert.equal(cse.location, "Ottawa, ON");
+});

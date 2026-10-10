@@ -27,7 +27,46 @@ function plainText(value: string) {
   return value.replace(/\r/g, "").split("\n").map((line) => line.replace(/[ \t]+/g, " ").trim()).join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
+// Government career sites name the employer awkwardly or not at all.
+const SITE_EMPLOYERS: Record<string, { company: string; location?: string }> = {
+  // Its microdata says "CityofOttawa".
+  "jobs-emplois.ottawa.ca": { company: "City of Ottawa" },
+  // Bilingual: "Canada Post - Postes Canada".
+  "jobs.canadapost.ca": { company: "Canada Post" },
+  // Every CSE job is in Ottawa, and its pages name neither.
+  "careers.cse-cst.gc.ca": { company: "Communications Security Establishment (CSE)", location: "Ottawa, ON" },
+};
+
+function employerName(company: string, host: string) {
+  // Job Bank: "Export Development Canada | Exportation et développement Canada".
+  if (host === "www.jobbank.gc.ca") return company.split(" | ")[0];
+  // GC Jobs: "Department - Branch - Division"; the department is the employer.
+  if (host === "emploisfp-psjobs.cfp-psc.gc.ca") return company.split(" - ")[0] || "Government of Canada";
+  return company;
+}
+
 export function capturedPostingValues(posting: CapturedPosting): JobValues {
+  const values = capturedPageValues(posting);
+  const host = new URL(values.jobUrl).hostname;
+  const site = SITE_EMPLOYERS[host];
+  return {
+    ...values,
+    company: site?.company ?? employerName(values.company, host),
+    location: values.location || site?.location || "",
+    jobDescription: host === "emploisfp-psjobs.cfp-psc.gc.ca" ? withoutPageMenu(values.jobDescription) : values.jobDescription,
+  };
+}
+
+// GC Jobs postings open with an "On this page" list of their own section headings;
+// the posting itself starts where the first of those headings appears again.
+function withoutPageMenu(description: string) {
+  const lines = description.split("\n");
+  if (lines[0] !== "On this page" || !lines[1]) return description;
+  const start = lines.indexOf(lines[1], 2);
+  return start > 0 ? lines.slice(start).join("\n") : description;
+}
+
+function capturedPageValues(posting: CapturedPosting): JobValues {
   const jobUrl = normalizeJobUrl(posting.url);
   // Rebuild a minimal page from the captured head so the regular extractor reads it.
   const html = [

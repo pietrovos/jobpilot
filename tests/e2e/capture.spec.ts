@@ -114,3 +114,63 @@ test("Save to JobPilot shows the job site beside the ID and refuses a job alread
   await expect(second.getByText("You already saved this job: Developer Experience Engineer at Fictional Signal Bakery, job ID d0bb1e5a7e (fictional).")).toBeVisible();
   await expect(second.getByRole("dialog", { name: "Add application" })).toHaveCount(0);
 });
+
+// Invented postings marked up the way Canadian government career sites mark theirs.
+const governmentPages = [
+  {
+    name: "schema.org microdata, as on SuccessFactors sites like the City of Ottawa",
+    body: `<div class="jobDisplayShell" itemscope itemtype="http://schema.org/JobPosting">
+      <h1><span itemprop="title">Fictional Route Planner</span></h1>
+      <span itemprop="jobLocation" itemscope itemtype="http://schema.org/Place"><span itemprop="address" itemscope itemtype="http://schema.org/PostalAddress">
+        <meta itemprop="addressLocality" content="Ottawa, ON"><meta itemprop="addressRegion" content="ON"></span></span>
+      <meta itemprop="datePosted" content="Sat Oct 10 02:00:00 UTC 2026">
+      <meta itemprop="hiringOrganization" content="Fictional Transit Authority">
+      <span itemprop="description"><p>Plan invented bus routes for a fictional city.</p></span></div>`,
+    company: "Fictional Transit Authority",
+    role: "Fictional Route Planner",
+    location: "Ottawa, ON",
+    description: /Plan invented bus routes/,
+  },
+  {
+    name: "RDFa with an escaped description, as on Job Bank",
+    body: `<h1 property="name"><span property="title">fictional trade analyst</span></h1>
+      <span property="datePosted">Posted on October 09, 2026</span>
+      <span property="hiringOrganization" typeof="Organization"><span property="name"><strong>Fictional Export Agency</strong></span></span>
+      <span property="joblocation" typeof="Place"><span property="address" typeof="PostalAddress"><span property="addressLocality">Calgary</span>, <span property="addressRegion">AB</span></span></span>
+      <span hidden property="description">&lt;p&gt;Analyse invented trade data for a fictional agency.&lt;/p&gt;</span>`,
+    company: "Fictional Export Agency",
+    role: "fictional trade analyst",
+    location: "Calgary, AB",
+    description: /Analyse invented trade data/,
+  },
+  {
+    name: "a labelled fact box, as on GC Jobs",
+    body: `<main><h1><span>Fictional Policy Analyst</span></h1><h2 class="pst-h2">Fictional Services Canada</h2>
+      <div class="left-box"><div class="bottomSpace"><b>Location</b><br> Ottawa (Ontario)</div></div>
+      <div class="right-box"><h2>About the position</h2><p>Analyse invented policies for a fictional department.</p></div></main>`,
+    company: "Fictional Services Canada",
+    role: "Fictional Policy Analyst",
+    location: "Ottawa (Ontario)",
+    description: /Analyse invented policies/,
+  },
+];
+
+for (const posting of governmentPages) {
+  test(`Save to JobPilot reads ${posting.name}`, async ({ page, context }) => {
+    const code = await bookmarkletCode(page);
+    await page.goto("/login");
+    await page.getByRole("button", { name: "Continue as guest" }).click();
+    await expect(page).toHaveURL("http://localhost:3100/");
+    await context.route("https://careers.fictional.test/**", (route) => route.fulfill({ contentType: "text/html", body: `<!doctype html><html><head><title>Job posting</title></head><body>${posting.body}</body></html>` }));
+    await page.goto("https://careers.fictional.test/job/1234567/");
+
+    const popupPromise = context.waitForEvent("page");
+    await page.evaluate(code);
+    const popup = await popupPromise;
+    const dialog = popup.getByRole("dialog", { name: "Add application" });
+    await expect(dialog.getByLabel("Company", { exact: true })).toHaveValue(posting.company);
+    await expect(dialog.getByLabel("Role", { exact: true })).toHaveValue(posting.role);
+    await expect(dialog.getByLabel("Location", { exact: true })).toHaveValue(posting.location);
+    await expect(dialog.getByLabel("Job description", { exact: true })).toHaveValue(posting.description);
+  });
+}

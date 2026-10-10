@@ -43,6 +43,43 @@ const captureScript = `(() => {
     .map((script) => script.textContent || "")
     .filter((json) => /jobposting/i.test(json) && json.length <= 20000)
     .slice(0, 3);
+  // Sites without JSON-LD often mark the posting up with schema.org microdata
+  // (SuccessFactors career sites such as the City of Ottawa, Canada Post and the
+  // Bank of Canada) or RDFa (Job Bank). Rebuild it as JSON-LD so the server reads
+  // all structured data the same way.
+  const prop = (root, name) => root && root.querySelector('[itemprop="' + name + '"],[property="' + name + '"]');
+  const value = (el) => (el ? el.getAttribute("content") || el.textContent || "" : "").trim();
+  const org = prop(document, "hiringOrganization");
+  if (!ld.length && (org || document.querySelector('[itemtype*="schema.org/JobPosting"]'))) {
+    const locality = value(prop(document, "addressLocality"));
+    const region = value(prop(document, "addressRegion"));
+    const body = prop(document, "description");
+    const posting = {
+      "@type": "JobPosting",
+      title: value(prop(document, "title")),
+      hiringOrganization: { name: org ? org.getAttribute("content") || value(prop(org, "name")) || value(org) : "" },
+      // The City of Ottawa writes "Ottawa, ON" as the locality and "ON" again as the region.
+      jobLocation: { address: { addressLocality: locality, addressRegion: locality.includes(region) ? "" : region } },
+      datePosted: value(prop(document, "datePosted")).replace("Posted on ", ""),
+      // Job Bank keeps the description as escaped HTML in a hidden element.
+      description: (body ? body.getAttribute("content") || (body.children.length ? body.innerHTML : body.textContent) || "" : "").slice(0, 12000),
+    };
+    // Escaping can grow the JSON past the server's limit, so trim the description until it fits.
+    let json = JSON.stringify(posting);
+    while (json.length > 20000) {
+      posting.description = posting.description.slice(0, posting.description.length - (json.length - 20000) - 100);
+      json = JSON.stringify(posting);
+    }
+    ld.push(json);
+  }
+  // GC Jobs lists the location as a bold label in a box of job facts.
+  const labelled = (label) => {
+    for (const el of document.querySelectorAll("b,strong")) {
+      const box = text(el.parentElement);
+      if (text(el) === label && box.startsWith(label) && box.length > label.length) return box.slice(label.length).trim();
+    }
+    return "";
+  };
   const selection = String(getSelection() || "").trim();
   // A user selection is deliberate, so trust it; otherwise read only a container
   // that is actually a job description. Broad elements like main/article are
@@ -66,14 +103,15 @@ const captureScript = `(() => {
     "[id*='jobDescription']",
     "[class*='jobDescription']",
     "[class*='job-description']",
+    ".right-box",
   ], 40);
   const payload = {
     v: 1,
     url: location.href.slice(0, 2048),
     title: document.title.slice(0, 300),
     h1: text(document.querySelector("h1")).slice(0, 300),
-    company: (pick([".job-details-jobs-unified-top-card__company-name", ".jobs-unified-top-card__company-name", "[data-testid='inlineHeader-companyName']", "[data-company-name]", ".topcard__org-name-link"]) || companyNearHeading()).slice(0, 200),
-    location: pick(["[data-testid='inlineHeader-companyLocation']", "[data-testid='job-location']", ".job-details-jobs-unified-top-card__tertiary-description-container", ".job-details-jobs-unified-top-card__bullet", ".topcard__flavor--bullet"]).slice(0, 200),
+    company: (pick([".job-details-jobs-unified-top-card__company-name", ".jobs-unified-top-card__company-name", "[data-testid='inlineHeader-companyName']", "[data-company-name]", ".topcard__org-name-link", "h2.pst-h2"]) || companyNearHeading()).slice(0, 200),
+    location: (pick(["[data-testid='inlineHeader-companyLocation']", "[data-testid='job-location']", ".job-details-jobs-unified-top-card__tertiary-description-container", ".job-details-jobs-unified-top-card__bullet", ".topcard__flavor--bullet"]) || labelled("Location")).slice(0, 200),
     description: description.slice(0, 20000),
     meta,
     ld,
